@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.sqlite"
+}
+
+enum CampaignSourceType {
+  qr
+  link
+  packaging
+  flyer
+  influencer
+  event
+}
+
+enum CampaignStatus {
+  active
+  paused
+  archived
+}
+
+enum EventType {
+  click
+  view
+  purchase
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+
+  @@map("Session")
+}
+
+model Campaign {
+  id            String             @id @default(cuid())
+  shop          String
+  publicToken   String             @unique @default(cuid())
+  name          String
+  sourceType    CampaignSourceType @default(qr)
+  targetUrl     String?
+  costCents     Int                @default(0)
+  clicksCount   Int                @default(0)
+  revenueCents  Int                @default(0)
+  ordersCount   Int                @default(0)
+  notes         String?
+  status        CampaignStatus     @default(active)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  events        Event[]
+
+  @@index([shop, createdAt])
+  @@index([shop, status])
+  @@unique([shop, name])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  type        EventType
+
+  // analytics
+  userAgent   String?
+  referer     String?
+  ipHash      String?
+  lang        String?
+
+  // purchase attribution
+  orderId     String?
+  valueCents  Int?
+  currency    String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([type, createdAt])
+}
