@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useNavigate } from "react-router";
 import CampaignQr from "../CampaignQr.jsx";
 import {
   Page,
@@ -14,6 +15,7 @@ import {
   BlockStack,
   Toast,
 } from "@shopify/polaris";
+
 
 // ----------------------
 // helpers
@@ -92,6 +94,7 @@ function buildGoUrl(token) {
 // component
 // ----------------------
 export default function AppIndex() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [campaigns, setCampaigns] = useState([]);
@@ -307,7 +310,7 @@ const rows = useMemo(() => {
 <Button
   size="slim"
   variant="secondary"
-  url={`/app/campaigns/${campaign.id}`}
+  onClick={() => navigate(`/app/campaigns/${campaign.id}`)}
 >
   Open details
 </Button>

@@ -1,6 +1,9 @@
 import { useLoaderData } from "react-router";
 import db from "../db.server";
-import { authenticate } from "../shopify.server";
+import {
+  authenticate,
+  addDocumentResponseHeaders,
+} from "../shopify.server";
 import {
   Page,
   Layout,
@@ -12,6 +15,13 @@ import {
   Badge,
   Button,
 } from "@shopify/polaris";
+
+const TRACK_BASE_URL =
+  process.env.TRACK_BASE_URL || "https://go.whatsells.dev";
+
+export const headers = (headersArgs) => {
+  return addDocumentResponseHeaders(headersArgs);
+};
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -177,7 +187,7 @@ export async function loader({ request, params }) {
       roi,
       roas,
       breakEvenOrders,
-      goUrl: `https://go.whatsells.dev/go/${campaign.publicToken}`,
+      goUrl: `${TRACK_BASE_URL}/go/${campaign.publicToken}`,
     },
     recentEvents,
   };
@@ -210,8 +220,11 @@ export default function CampaignDetails() {
                   <Text variant="headingMd" as="h2">
                     {campaign.name}
                   </Text>
+
                   <InlineStack gap="200">
-                    <Badge tone={campaign.status === "active" ? "success" : "attention"}>
+                    <Badge
+                      tone={campaign.status === "active" ? "success" : "attention"}
+                    >
                       {campaign.status}
                     </Badge>
                     <Text as="span" tone="subdued">
@@ -281,7 +294,11 @@ export default function CampaignDetails() {
                   "Order ID",
                   "Value",
                 ]}
-                rows={eventRows.length ? eventRows : [["—", "—", "—", "—", "—", "—"]]}
+                rows={
+                  eventRows.length
+                    ? eventRows
+                    : [["—", "—", "—", "—", "—", "—"]]
+                }
               />
             </BlockStack>
           </Card>
