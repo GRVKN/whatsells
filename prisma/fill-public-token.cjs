@@ -5,17 +5,27 @@ const prisma = new PrismaClient();
 
 async function main() {
   const campaigns = await prisma.campaign.findMany({
-    where: { publicToken: null },
-    select: { id: true },
+    where: {
+      OR: [
+        { publicToken: null },
+        { publicToken: "" },
+      ],
+    },
+    select: {
+      id: true,
+      publicToken: true,
+      name: true,
+    },
   });
 
   for (const campaign of campaigns) {
+    const token = randomUUID().replace(/-/g, "");
     await prisma.campaign.update({
       where: { id: campaign.id },
-      data: {
-        publicToken: randomUUID().replace(/-/g, ""),
-      },
+      data: { publicToken: token },
     });
+
+    console.log(`Updated campaign ${campaign.name || campaign.id} -> ${token}`);
   }
 
   console.log(`Updated ${campaigns.length} campaign(s).`);

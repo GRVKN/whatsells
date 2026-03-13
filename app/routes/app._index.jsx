@@ -81,12 +81,11 @@ async function safeCopy(text) {
   }
 }
 
-const APP_BASE_URL =
-  import.meta.env.VITE_APP_BASE_URL ||
-  "https://pros-rise-communities-angels.trycloudflare.com";
+const TRACK_BASE_URL =
+  import.meta.env.VITE_TRACK_BASE_URL || "https://go.whatsells.dev";
 
 function buildGoUrl(token) {
-  return new URL(`/go/${token}`, APP_BASE_URL).toString();
+  return new URL(`/go/${token}`, TRACK_BASE_URL).toString();
 }
 
 // ----------------------
@@ -305,13 +304,13 @@ const rows = useMemo(() => {
             Copy
           </Button>
 
-          <Button
-            size="slim"
-            variant="secondary"
-            onClick={() => window.open(goUrl, "_blank", "noopener,noreferrer")}
-          >
-            Open
-          </Button>
+<Button
+  size="slim"
+  variant="secondary"
+  url={`/app/campaigns/${campaign.id}`}
+>
+  Open details
+</Button>
 
           <Button
             size="slim"
