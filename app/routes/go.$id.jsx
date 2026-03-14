@@ -2,7 +2,7 @@
 import db from "../db.server";
 import crypto from "node:crypto";
 
-const BASE_URL = process.env.TRACK_BASE_URL || "https://go.whatsells.dev";
+const BASE_URL = process.env.TRACK_BASE_URL || "https://app.whatsells.dev";
 const ATTR_COOKIE = "ws_cid";
 const TARGET_PARAM = "ws_campaign";
 const ATTR_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
