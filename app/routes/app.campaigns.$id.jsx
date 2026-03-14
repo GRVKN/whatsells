@@ -17,7 +17,7 @@ import {
 } from "@shopify/polaris";
 
 const TRACK_BASE_URL =
-  process.env.TRACK_BASE_URL || "https://app.whatsells.dev";
+  process.env.TRACK_BASE_URL || "https://go.whatsells.dev";
 
 export const headers = (headersArgs) => {
   return addDocumentResponseHeaders(headersArgs);
