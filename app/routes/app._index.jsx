@@ -332,7 +332,7 @@ const rows = useMemo(() => {
       </Button>,
     ];
   });
-}, [campaigns, sourceLabelByValue, showToast, deleteCampaign, navigate]);
+}, [campaigns, sourceLabelByValue, showToast, deleteCampaign,]);
 
   return (
     <>
