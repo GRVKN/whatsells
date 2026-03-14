@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate } from "react-router";
+
 import CampaignQr from "../CampaignQr.jsx";
 import {
   Page,
@@ -94,7 +94,7 @@ function buildGoUrl(token) {
 // component
 // ----------------------
 export default function AppIndex() {
-  const navigate = useNavigate();
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [campaigns, setCampaigns] = useState([]);
@@ -307,13 +307,7 @@ const rows = useMemo(() => {
             Copy
           </Button>
 
-<Button
-  size="slim"
-  variant="secondary"
-  onClick={() => navigate(`/app/campaigns/${campaign.id}`)}
->
-  Open details
-</Button>
+
 
           <Button
             size="slim"
