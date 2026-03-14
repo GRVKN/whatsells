@@ -84,7 +84,7 @@ async function safeCopy(text) {
 }
 
 const TRACK_BASE_URL =
-  import.meta.env.VITE_TRACK_BASE_URL || "https://go.whatsells.dev";
+  import.meta.env.VITE_TRACK_BASE_URL || "https://app.whatsells.dev";
 
 function buildGoUrl(token) {
   return new URL(`/go/${token}`, TRACK_BASE_URL).toString();
@@ -338,7 +338,7 @@ const rows = useMemo(() => {
       </Button>,
     ];
   });
-}, [campaigns, sourceLabelByValue, showToast, deleteCampaign]);
+}, [campaigns, sourceLabelByValue, showToast, deleteCampaign, navigate]);
 
   return (
     <>
