@@ -10,7 +10,7 @@ export async function action({ request }) {
       payload,
     });
 
-    return new Response("OK", { status: 200 });
+    return new Response("ok", { status: 200 });
   } catch (error) {
     console.error("Compliance webhook failed", error);
     return new Response("Unauthorized", { status: 401 });
