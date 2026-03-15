@@ -1,0 +1,35 @@
+import { authenticate } from "../shopify.server";
+
+export async function action({ request }) {
+  try {
+    const { topic, shop, payload } = await authenticate.webhook(request);
+
+    console.log("Compliance webhook received", {
+      topic,
+      shop,
+      payload,
+    });
+
+    switch (topic) {
+      case "CUSTOMERS_DATA_REQUEST":
+      case "customers/data_request":
+        break;
+
+      case "CUSTOMERS_REDACT":
+      case "customers/redact":
+        break;
+
+      case "SHOP_REDACT":
+      case "shop/redact":
+        break;
+
+      default:
+        console.warn("Unhandled compliance webhook topic:", topic);
+    }
+
+    return new Response("OK", { status: 200 });
+  } catch (error) {
+    console.error("Compliance webhook failed", error);
+    return new Response("Unauthorized", { status: 401 });
+  }
+}
