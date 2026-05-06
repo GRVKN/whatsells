@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useNavigate } from "react-router";
 
 import CampaignQr from "../CampaignQr.jsx";
 import {
@@ -191,6 +192,7 @@ function compareWorstCampaigns(a, b) {
 // component
 // ----------------------
 export default function AppIndex() {
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -391,30 +393,36 @@ const rows = useMemo(() => {
         shorten(target, 60),
         formatDateTime(campaign?.createdAt),
       goUrl ? (
-        <InlineStack gap="200" wrap={false}>
-          <Button
-            size="slim"
-            onClick={async () => {
-              const ok = await safeCopy(goUrl);
-              showToast(ok ? "Go link copied" : "Copy failed");
-            }}
-          >
-            Copy
-          </Button>
+<InlineStack gap="200" wrap={false}>
+  <Button
+    size="slim"
+    onClick={async () => {
+      const ok = await safeCopy(goUrl);
+      showToast(ok ? "Go link copied" : "Copy failed");
+    }}
+  >
+    Copy
+  </Button>
 
+  <Button
+    size="slim"
+    variant="secondary"
+    onClick={() => navigate(`/app/campaigns/${campaign.id}`)}
+  >
+    Details
+  </Button>
 
-
-          <Button
-            size="slim"
-            onClick={() => {
-              setQrValue(goUrl);
-              setQrTitle(campaign?.name || "Campaign");
-              setQrOpen(true);
-            }}
-          >
-            Show QR
-          </Button>
-        </InlineStack>
+  <Button
+    size="slim"
+    onClick={() => {
+      setQrValue(goUrl);
+      setQrTitle(campaign?.name || "Campaign");
+      setQrOpen(true);
+    }}
+  >
+    Show QR
+  </Button>
+</InlineStack>
       ) : (
         ""
       ),
@@ -427,7 +435,7 @@ const rows = useMemo(() => {
       </Button>,
     ];
   });
-}, [campaigns, sourceLabelByValue, showToast, deleteCampaign,]);
+}, [campaigns, sourceLabelByValue, showToast, deleteCampaign, navigate]);
 
   return (
     <>
