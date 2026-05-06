@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate } from "react-router";
+
 
 import CampaignQr from "../CampaignQr.jsx";
 import {
@@ -192,7 +192,7 @@ function compareWorstCampaigns(a, b) {
 // component
 // ----------------------
 export default function AppIndex() {
-  const navigate = useNavigate();
+
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -404,13 +404,13 @@ const rows = useMemo(() => {
     Copy
   </Button>
 
-  <Button
-    size="slim"
-    variant="secondary"
-    onClick={() => navigate(`/app/campaigns/${campaign.id}`)}
-  >
-    Details
-  </Button>
+<Button
+  size="slim"
+  variant="secondary"
+  url={`/app/campaigns/${campaign.id}`}
+>
+  Details
+</Button>
 
   <Button
     size="slim"
@@ -435,7 +435,7 @@ const rows = useMemo(() => {
       </Button>,
     ];
   });
-}, [campaigns, sourceLabelByValue, showToast, deleteCampaign, navigate]);
+}, [campaigns, sourceLabelByValue, showToast, deleteCampaign]);
 
   return (
     <>
