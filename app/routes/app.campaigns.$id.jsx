@@ -1,9 +1,6 @@
 import { useLoaderData, useLocation } from "react-router";
 import db from "../db.server";
-import {
-  authenticate,
-  addDocumentResponseHeaders,
-} from "../shopify.server";
+import { authenticate } from "../shopify.server";
 import {
   Page,
   Layout,
@@ -20,9 +17,6 @@ import {
 const TRACK_BASE_URL =
   process.env.TRACK_BASE_URL || "https://app.whatsells.dev";
 
-export const headers = (headersArgs) => {
-  return addDocumentResponseHeaders(headersArgs);
-};
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -412,6 +406,10 @@ export async function loader({ request, params }) {
       recentEvents: events.slice(0, 30),
     };
   } catch (error) {
+    if (error instanceof Response) {
+      throw error;
+    }
+
     console.error("Campaign details loader failed:", error);
 
     return {
