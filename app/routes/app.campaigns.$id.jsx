@@ -1,4 +1,4 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useLocation } from "react-router";
 import db from "../db.server";
 import {
   authenticate,
@@ -14,6 +14,7 @@ import {
   DataTable,
   Badge,
   Button,
+  Banner,
 } from "@shopify/polaris";
 
 const TRACK_BASE_URL =
@@ -23,9 +24,6 @@ export const headers = (headersArgs) => {
   return addDocumentResponseHeaders(headersArgs);
 };
 
-// ----------------------
-// Format helpers
-// ----------------------
 function formatDateTime(value) {
   if (!value) return "—";
 
@@ -82,16 +80,12 @@ function numberOrZero(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
-// ----------------------
-// KPI helpers
-// ----------------------
 function calcProfit(costCents, revenueCents) {
   return numberOrZero(revenueCents) - numberOrZero(costCents);
 }
 
 function calcRoas(costCents, revenueCents) {
   const cost = numberOrZero(costCents);
-
   if (cost <= 0) return null;
 
   return numberOrZero(revenueCents) / cost;
@@ -99,16 +93,13 @@ function calcRoas(costCents, revenueCents) {
 
 function calcRoi(costCents, revenueCents) {
   const cost = numberOrZero(costCents);
-
   if (cost <= 0) return null;
 
-  const profitCents = calcProfit(costCents, revenueCents);
-  return profitCents / cost;
+  return calcProfit(costCents, revenueCents) / cost;
 }
 
 function calcConversionRate(clicks, orders) {
   const totalClicks = numberOrZero(clicks);
-
   if (totalClicks <= 0) return 0;
 
   return numberOrZero(orders) / totalClicks;
@@ -116,7 +107,6 @@ function calcConversionRate(clicks, orders) {
 
 function calcAverageOrderValue(revenueCents, orders) {
   const totalOrders = numberOrZero(orders);
-
   if (totalOrders <= 0) return null;
 
   return Math.round(numberOrZero(revenueCents) / totalOrders);
@@ -132,9 +122,14 @@ function calcBreakEvenOrders(costCents, avgOrderValueCents) {
   return Math.ceil(cost / avgOrder);
 }
 
-// ----------------------
-// Range helpers
-// ----------------------
+function normalizeRange(value) {
+  if (value === "7d" || value === "30d" || value === "all") {
+    return value;
+  }
+
+  return "7d";
+}
+
 function getRangeStart(range) {
   const now = new Date();
 
@@ -153,23 +148,19 @@ function getRangeStart(range) {
   return null;
 }
 
-function normalizeRange(value) {
-  if (value === "7d" || value === "30d" || value === "all") {
-    return value;
-  }
-
-  return "7d";
-}
-
 function getRangeLabel(range) {
   if (range === "7d") return "Last 7 days";
   if (range === "30d") return "Last 30 days";
   return "All time";
 }
 
-// ----------------------
-// Ranking helpers
-// ----------------------
+function buildRangeUrl(campaignId, range, currentSearch = "") {
+  const params = new URLSearchParams(currentSearch || "");
+  params.set("range", range);
+
+  return `/app/campaigns/${campaignId}?${params.toString()}`;
+}
+
 function hasPerformanceSignal(campaign) {
   return (
     numberOrZero(campaign.costCents) > 0 ||
@@ -234,23 +225,15 @@ function getCampaignRanking(allCampaigns, currentCampaignId) {
   };
 }
 
-// ----------------------
-// Chart helpers
-// ----------------------
-function getDateKey(value) {
-  const d = new Date(value);
-  return d.toISOString().slice(0, 10);
-}
-
-function buildDailyChartData(events) {
+function buildDailyRows(events) {
   const map = new Map();
 
   for (const event of events) {
-    const key = getDateKey(event.createdAt);
+    const dateKey = new Date(event.createdAt).toISOString().slice(0, 10);
 
-    if (!map.has(key)) {
-      map.set(key, {
-        date: key,
+    if (!map.has(dateKey)) {
+      map.set(dateKey, {
+        date: dateKey,
         label: formatDateShort(event.createdAt),
         clicks: 0,
         orders: 0,
@@ -258,7 +241,7 @@ function buildDailyChartData(events) {
       });
     }
 
-    const row = map.get(key);
+    const row = map.get(dateKey);
 
     if (event.type === "click") {
       row.clicks += 1;
@@ -275,134 +258,66 @@ function buildDailyChartData(events) {
   });
 }
 
-function buildRangeUrl(campaignId, range) {
-  return `/app/campaigns/${campaignId}?range=${range}`;
-}
-
-// ----------------------
-// Loader
-// ----------------------
 export async function loader({ request, params }) {
-  const { session } = await authenticate.admin(request);
-  const shop = session.shop;
-  const id = String(params.id || "").trim();
+  try {
+    const { session } = await authenticate.admin(request);
+    const shop = session.shop;
+    const id = String(params.id || "").trim();
 
-  if (!id) {
-    throw new Response("Missing campaign id", { status: 400 });
-  }
+    if (!id) {
+      throw new Response("Missing campaign id", { status: 400 });
+    }
 
-  const url = new URL(request.url);
-  const range = normalizeRange(url.searchParams.get("range"));
-  const rangeStart = getRangeStart(range);
+    const url = new URL(request.url);
+    const range = normalizeRange(url.searchParams.get("range"));
+    const rangeStart = getRangeStart(range);
 
-  const campaign = await db.campaign.findFirst({
-    where: { id, shop },
-    select: {
-      id: true,
-      shop: true,
-      publicToken: true,
-      name: true,
-      sourceType: true,
-      targetUrl: true,
-      costCents: true,
-      clicksCount: true,
-      revenueCents: true,
-      ordersCount: true,
-      notes: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-
-  if (!campaign) {
-    throw new Response("Campaign not found", { status: 404 });
-  }
-
-  const eventWhere = {
-    campaignId: campaign.id,
-    ...(rangeStart ? { createdAt: { gte: rangeStart } } : {}),
-  };
-
-  const [
-    clicks7d,
-    clicks30d,
-    rangeClicks,
-    rangeOrders,
-    rangeRevenueRaw,
-    recentEvents,
-    chartEvents,
-    allCampaigns,
-  ] = await Promise.all([
-    db.event.count({
-      where: {
-        campaignId: campaign.id,
-        type: "click",
-        createdAt: { gte: getRangeStart("7d") },
+    const campaign = await db.campaign.findFirst({
+      where: { id, shop },
+      select: {
+        id: true,
+        shop: true,
+        publicToken: true,
+        name: true,
+        sourceType: true,
+        targetUrl: true,
+        costCents: true,
+        clicksCount: true,
+        revenueCents: true,
+        ordersCount: true,
+        notes: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
       },
-    }),
+    });
 
-    db.event.count({
-      where: {
-        campaignId: campaign.id,
-        type: "click",
-        createdAt: { gte: getRangeStart("30d") },
-      },
-    }),
+    if (!campaign) {
+      throw new Response("Campaign not found", { status: 404 });
+    }
 
-    db.event.count({
-      where: {
-        ...eventWhere,
-        type: "click",
-      },
-    }),
+    const eventWhere = {
+      campaignId: campaign.id,
+      ...(rangeStart ? { createdAt: { gte: rangeStart } } : {}),
+    };
 
-    db.event.count({
-      where: {
-        ...eventWhere,
-        type: "purchase",
-      },
-    }),
-
-    db.event.aggregate({
-      where: {
-        ...eventWhere,
-        type: "purchase",
-      },
-      _sum: {
-        valueCents: true,
-      },
-    }),
-
-    db.event.findMany({
+    const events = await db.event.findMany({
       where: eventWhere,
       orderBy: { createdAt: "desc" },
-      take: 30,
+      take: 200,
       select: {
         id: true,
         type: true,
         createdAt: true,
         referer: true,
         lang: true,
-        ipHash: true,
         valueCents: true,
         currency: true,
         orderId: true,
       },
-    }),
+    });
 
-    db.event.findMany({
-      where: eventWhere,
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        type: true,
-        createdAt: true,
-        valueCents: true,
-      },
-    }),
-
-    db.campaign.findMany({
+    const allCampaigns = await db.campaign.findMany({
       where: { shop },
       select: {
         id: true,
@@ -413,70 +328,105 @@ export async function loader({ request, params }) {
         ordersCount: true,
         createdAt: true,
       },
-    }),
-  ]);
+    });
 
-  const profitCents = calcProfit(campaign.costCents, campaign.revenueCents);
-  const conversionRate = calcConversionRate(
-    campaign.clicksCount,
-    campaign.ordersCount,
-  );
+    const clicks7d = await db.event.count({
+      where: {
+        campaignId: campaign.id,
+        type: "click",
+        createdAt: { gte: getRangeStart("7d") },
+      },
+    });
 
-  const averageOrderValueCents = calcAverageOrderValue(
-    campaign.revenueCents,
-    campaign.ordersCount,
-  );
+    const clicks30d = await db.event.count({
+      where: {
+        campaignId: campaign.id,
+        type: "click",
+        createdAt: { gte: getRangeStart("30d") },
+      },
+    });
 
-  const roi = calcRoi(campaign.costCents, campaign.revenueCents);
-  const roas = calcRoas(campaign.costCents, campaign.revenueCents);
+    const rangeClicks = events.filter((event) => event.type === "click").length;
+    const rangeOrders = events.filter((event) => event.type === "purchase").length;
 
-  const breakEvenOrders = calcBreakEvenOrders(
-    campaign.costCents,
-    averageOrderValueCents,
-  );
+    const rangeRevenueCents = events.reduce((sum, event) => {
+      if (event.type !== "purchase") return sum;
+      return sum + numberOrZero(event.valueCents);
+    }, 0);
 
-  const rangeRevenueCents = numberOrZero(rangeRevenueRaw?._sum?.valueCents);
-  const rangeProfitCents = calcProfit(campaign.costCents, rangeRevenueCents);
-  const rangeConversionRate = calcConversionRate(rangeClicks, rangeOrders);
-  const rangeRoi = calcRoi(campaign.costCents, rangeRevenueCents);
-  const rangeRoas = calcRoas(campaign.costCents, rangeRevenueCents);
+    const profitCents = calcProfit(campaign.costCents, campaign.revenueCents);
 
-  const ranking = getCampaignRanking(allCampaigns, campaign.id);
-  const chartData = buildDailyChartData(chartEvents);
+    const conversionRate = calcConversionRate(
+      campaign.clicksCount,
+      campaign.ordersCount,
+    );
 
-  return {
-    range,
-    rangeLabel: getRangeLabel(range),
-    campaign: {
-      ...campaign,
-      clicks7d,
-      clicks30d,
-      profitCents,
-      conversionRate,
+    const averageOrderValueCents = calcAverageOrderValue(
+      campaign.revenueCents,
+      campaign.ordersCount,
+    );
+
+    const roi = calcRoi(campaign.costCents, campaign.revenueCents);
+    const roas = calcRoas(campaign.costCents, campaign.revenueCents);
+
+    const breakEvenOrders = calcBreakEvenOrders(
+      campaign.costCents,
       averageOrderValueCents,
-      roi,
-      roas,
-      breakEvenOrders,
-      goUrl: `${TRACK_BASE_URL}/go/${campaign.publicToken}`,
-      ...ranking,
-    },
-    rangeStats: {
-      clicks: rangeClicks,
-      orders: rangeOrders,
-      revenueCents: rangeRevenueCents,
-      profitCents: rangeProfitCents,
-      conversionRate: rangeConversionRate,
-      roi: rangeRoi,
-      roas: rangeRoas,
-    },
-    chartData,
-    recentEvents,
-  };
+    );
+
+    const rangeProfitCents = calcProfit(campaign.costCents, rangeRevenueCents);
+    const rangeConversionRate = calcConversionRate(rangeClicks, rangeOrders);
+    const rangeRoi = calcRoi(campaign.costCents, rangeRevenueCents);
+    const rangeRoas = calcRoas(campaign.costCents, rangeRevenueCents);
+
+    const ranking = getCampaignRanking(allCampaigns, campaign.id);
+    const chartRows = buildDailyRows([...events].reverse());
+
+    return {
+      loadError: null,
+      range,
+      rangeLabel: getRangeLabel(range),
+      campaign: {
+        ...campaign,
+        clicks7d,
+        clicks30d,
+        profitCents,
+        conversionRate,
+        averageOrderValueCents,
+        roi,
+        roas,
+        breakEvenOrders,
+        goUrl: `${TRACK_BASE_URL}/go/${campaign.publicToken}`,
+        ...ranking,
+      },
+      rangeStats: {
+        clicks: rangeClicks,
+        orders: rangeOrders,
+        revenueCents: rangeRevenueCents,
+        profitCents: rangeProfitCents,
+        conversionRate: rangeConversionRate,
+        roi: rangeRoi,
+        roas: rangeRoas,
+      },
+      chartRows,
+      recentEvents: events.slice(0, 30),
+    };
+  } catch (error) {
+    console.error("Campaign details loader failed:", error);
+
+    return {
+      loadError:
+        error?.message || "Campaign details could not be loaded.",
+      range: "7d",
+      rangeLabel: "Last 7 days",
+      campaign: null,
+      rangeStats: null,
+      chartRows: [],
+      recentEvents: [],
+    };
+  }
 }
 
-// ----------------------
-// Small UI components
-// ----------------------
 function KpiCard({ label, value, helpText }) {
   return (
     <div style={{ minWidth: 170, flex: 1 }}>
@@ -499,80 +449,64 @@ function KpiCard({ label, value, helpText }) {
   );
 }
 
-function SimpleBarChart({ title, data, metric, valueFormatter }) {
-  const maxValue = Math.max(
-    ...data.map((row) => numberOrZero(row[metric])),
-    1,
-  );
+function ChartTable({ rows }) {
+  const chartRows = rows.map((row) => [
+    row.label,
+    String(row.clicks),
+    String(row.orders),
+    formatMoneyFromCents(row.revenueCents),
+  ]);
 
   return (
     <Card>
       <BlockStack gap="300">
         <Text variant="headingMd" as="h2">
-          {title}
+          Performance by day
         </Text>
 
-        {data.length ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {data.map((row) => {
-              const value = numberOrZero(row[metric]);
-              const width = Math.max((value / maxValue) * 100, value > 0 ? 4 : 0);
-
-              return (
-                <div
-                  key={`${metric}-${row.date}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "70px 1fr 80px",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <Text as="span" tone="subdued">
-                    {row.label}
-                  </Text>
-
-                  <div
-                    style={{
-                      height: 12,
-                      background: "#eee",
-                      borderRadius: 999,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${width}%`,
-                        background: "#111",
-                        borderRadius: 999,
-                      }}
-                    />
-                  </div>
-
-                  <Text as="span" alignment="end">
-                    {valueFormatter ? valueFormatter(value) : value}
-                  </Text>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <Text as="p" tone="subdued">
-            No data for this range yet.
-          </Text>
-        )}
+        <DataTable
+          columnContentTypes={["text", "numeric", "numeric", "text"]}
+          headings={["Date", "Clicks", "Orders", "Revenue"]}
+          rows={
+            chartRows.length
+              ? chartRows
+              : [["—", "—", "—", "—"]]
+          }
+        />
       </BlockStack>
     </Card>
   );
 }
 
-// ----------------------
-// Component
-// ----------------------
 export default function CampaignDetails() {
-  const { campaign, range, rangeLabel, rangeStats, chartData, recentEvents } =
-    useLoaderData();
+  const location = useLocation();
+
+  const {
+    loadError,
+    campaign,
+    range,
+    rangeLabel,
+    rangeStats,
+    chartRows,
+    recentEvents,
+  } = useLoaderData();
+
+  if (loadError || !campaign) {
+    return (
+      <Page
+        title="Campaign details"
+        backAction={{ content: "Campaigns", url: "/app" }}
+      >
+        <Layout>
+          <Layout.Section>
+            <Banner tone="critical">
+              {loadError || "Campaign details could not be loaded."}
+            </Banner>
+          </Layout.Section>
+        </Layout>
+      </Page>
+    );
+  }
 
   const eventRows = recentEvents.map((event) => [
     formatDateTime(event.createdAt),
@@ -587,7 +521,7 @@ export default function CampaignDetails() {
     ? "success"
     : campaign.isWorstCampaign
       ? "critical"
-      : "info";
+      : "attention";
 
   return (
     <Page
@@ -616,11 +550,11 @@ export default function CampaignDetails() {
                       {campaign.status}
                     </Badge>
 
-                    <Badge tone="info">{campaign.sourceType}</Badge>
+                    <Badge>{campaign.sourceType}</Badge>
                   </InlineStack>
                 </BlockStack>
 
-                <BlockStack gap="150" align="end">
+                <BlockStack gap="150">
                   <Badge tone={rankingTone}>{campaign.performanceLabel}</Badge>
 
                   {campaign.rank ? (
@@ -641,22 +575,22 @@ export default function CampaignDetails() {
 
               <InlineStack gap="200">
                 <Button
-                  pressed={range === "7d"}
-                  url={buildRangeUrl(campaign.id, "7d")}
+                  variant={range === "7d" ? "primary" : "secondary"}
+                  url={buildRangeUrl(campaign.id, "7d", location.search)}
                 >
                   7 days
                 </Button>
 
                 <Button
-                  pressed={range === "30d"}
-                  url={buildRangeUrl(campaign.id, "30d")}
+                  variant={range === "30d" ? "primary" : "secondary"}
+                  url={buildRangeUrl(campaign.id, "30d", location.search)}
                 >
                   30 days
                 </Button>
 
                 <Button
-                  pressed={range === "all"}
-                  url={buildRangeUrl(campaign.id, "all")}
+                  variant={range === "all" ? "primary" : "secondary"}
+                  url={buildRangeUrl(campaign.id, "all", location.search)}
                 >
                   All time
                 </Button>
@@ -716,26 +650,7 @@ export default function CampaignDetails() {
         </Layout.Section>
 
         <Layout.Section>
-          <BlockStack gap="300">
-            <SimpleBarChart
-              title="Clicks over time"
-              data={chartData}
-              metric="clicks"
-            />
-
-            <SimpleBarChart
-              title="Orders over time"
-              data={chartData}
-              metric="orders"
-            />
-
-            <SimpleBarChart
-              title="Revenue over time"
-              data={chartData}
-              metric="revenueCents"
-              valueFormatter={formatMoneyFromCents}
-            />
-          </BlockStack>
+          <ChartTable rows={chartRows} />
         </Layout.Section>
 
         <Layout.Section>
