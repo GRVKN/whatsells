@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-
+import { useLocation } from "react-router";
 
 import CampaignQr from "../CampaignQr.jsx";
 import {
@@ -192,7 +192,8 @@ function compareWorstCampaigns(a, b) {
 // component
 // ----------------------
 export default function AppIndex() {
-
+  const location = useLocation();
+  const embeddedQuery = location.search || "";
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -407,7 +408,7 @@ const rows = useMemo(() => {
 <Button
   size="slim"
   variant="secondary"
-  url={`/app/campaigns/${campaign.id}`}
+  url={`/app/campaigns/${campaign.id}${embeddedQuery}`}
 >
   Details
 </Button>
@@ -435,7 +436,7 @@ const rows = useMemo(() => {
       </Button>,
     ];
   });
-}, [campaigns, sourceLabelByValue, showToast, deleteCampaign]);
+}, [campaigns, sourceLabelByValue, showToast, deleteCampaign, embeddedQuery]);
 
   return (
     <>
