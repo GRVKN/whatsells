@@ -24,12 +24,10 @@ function cleanOptionalNotes(v) {
 function normalizeUrl(input) {
   let url = input.trim();
 
-  // Händler schreiben oft nur Domain
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
     url = "https://" + url;
   }
 
-  // Shopify Domains automatisch sichern
   if (url.includes(".myshopify.com") && !url.startsWith("https://")) {
     url = "https://" + url;
   }
@@ -54,7 +52,6 @@ function parseOptionalUrl(v) {
     }
 
     return { ok: true, value: u.toString() };
-
   } catch {
     return { ok: false, error: "Target URL is invalid" };
   }
@@ -67,6 +64,7 @@ function parseMoneyToCents(v, defaultValue = 0) {
   const num = Number(normalized);
 
   if (!Number.isFinite(num) || num < 0) return null;
+
   return Math.round(num * 100);
 }
 
@@ -76,35 +74,56 @@ function daysAgo(days) {
   return d;
 }
 
+function numberOrZero(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
 function calcProfit(costCents, revenueCents) {
-  return Number(revenueCents || 0) - Number(costCents || 0);
+  return numberOrZero(revenueCents) - numberOrZero(costCents);
 }
 
 function calcRoas(costCents, revenueCents) {
-  if (!costCents || costCents <= 0) return null;
-  return Number(revenueCents || 0) / Number(costCents || 0);
+  const cost = numberOrZero(costCents);
+
+  if (cost <= 0) return null;
+
+  return numberOrZero(revenueCents) / cost;
 }
 
 function calcRoi(costCents, revenueCents) {
-  if (!costCents || costCents <= 0) return null;
+  const cost = numberOrZero(costCents);
+
+  if (cost <= 0) return null;
+
   const profitCents = calcProfit(costCents, revenueCents);
-  return profitCents / Number(costCents || 0);
+  return profitCents / cost;
 }
 
 function calcConversionRate(clicks, orders) {
-  if (!clicks || clicks <= 0) return 0;
-  return Number(orders || 0) / Number(clicks || 0);
+  const totalClicks = numberOrZero(clicks);
+
+  if (totalClicks <= 0) return 0;
+
+  return numberOrZero(orders) / totalClicks;
 }
 
 function calcAverageOrderValue(revenueCents, orders) {
-  if (!orders || orders <= 0) return null;
-  return Math.round(Number(revenueCents || 0) / Number(orders || 0));
+  const totalOrders = numberOrZero(orders);
+
+  if (totalOrders <= 0) return null;
+
+  return Math.round(numberOrZero(revenueCents) / totalOrders);
 }
 
 function calcBreakEvenOrders(costCents, avgOrderValueCents) {
-  if (!costCents || costCents <= 0) return 0;
-  if (!avgOrderValueCents || avgOrderValueCents <= 0) return null;
-  return Math.ceil(Number(costCents) / Number(avgOrderValueCents));
+  const cost = numberOrZero(costCents);
+  const avgOrder = numberOrZero(avgOrderValueCents);
+
+  if (cost <= 0) return 0;
+  if (avgOrder <= 0) return null;
+
+  return Math.ceil(cost / avgOrder);
 }
 
 async function loadClickMaps(campaignIds) {
@@ -125,6 +144,7 @@ async function loadClickMaps(campaignIds) {
       },
       _count: { _all: true },
     }),
+
     db.event.groupBy({
       by: ["campaignId"],
       where: {
@@ -148,17 +168,24 @@ async function loadClickMaps(campaignIds) {
 
 function enrichCampaign(campaign, clicks7dMap = {}, clicks30dMap = {}) {
   const profitCents = calcProfit(campaign.costCents, campaign.revenueCents);
+
   const averageOrderValueCents = calcAverageOrderValue(
     campaign.revenueCents,
     campaign.ordersCount,
   );
 
+  const clicks7d = clicks7dMap[campaign.id] || 0;
+  const clicks30d = clicks30dMap[campaign.id] || 0;
+
   return {
     ...campaign,
     profitCents,
-    clicks7d: clicks7dMap[campaign.id] || 0,
-    clicks30d: clicks30dMap[campaign.id] || 0,
-    conversionRate: calcConversionRate(campaign.clicksCount, campaign.ordersCount),
+    clicks7d,
+    clicks30d,
+    conversionRate: calcConversionRate(
+      campaign.clicksCount,
+      campaign.ordersCount,
+    ),
     averageOrderValueCents,
     breakEvenOrders: calcBreakEvenOrders(
       campaign.costCents,
@@ -169,8 +196,77 @@ function enrichCampaign(campaign, clicks7dMap = {}, clicks30dMap = {}) {
   };
 }
 
+function hasPerformanceSignal(campaign) {
+  return (
+    numberOrZero(campaign.costCents) > 0 ||
+    numberOrZero(campaign.revenueCents) > 0 ||
+    numberOrZero(campaign.profitCents) !== 0 ||
+    numberOrZero(campaign.ordersCount) > 0 ||
+    numberOrZero(campaign.clicksCount) > 0 ||
+    numberOrZero(campaign.clicks30d) > 0 ||
+    numberOrZero(campaign.clicks7d) > 0
+  );
+}
+
+function compareCampaignPerformance(a, b) {
+  const checks = [
+    numberOrZero(b.profitCents) - numberOrZero(a.profitCents),
+    numberOrZero(b.roi) - numberOrZero(a.roi),
+    numberOrZero(b.revenueCents) - numberOrZero(a.revenueCents),
+    numberOrZero(b.ordersCount) - numberOrZero(a.ordersCount),
+    numberOrZero(b.conversionRate) - numberOrZero(a.conversionRate),
+    numberOrZero(b.roas) - numberOrZero(a.roas),
+    numberOrZero(b.clicks30d) - numberOrZero(a.clicks30d),
+    numberOrZero(b.clicksCount) - numberOrZero(a.clicksCount),
+    numberOrZero(a.costCents) - numberOrZero(b.costCents),
+  ];
+
+  return checks.find((value) => value !== 0) || 0;
+}
+
+function addCampaignRanking(campaigns) {
+  const ranked = campaigns
+    .filter(hasPerformanceSignal)
+    .sort(compareCampaignPerformance);
+
+  const totalRankedCampaigns = ranked.length;
+  const rankById = new Map();
+
+  ranked.forEach((campaign, index) => {
+    rankById.set(campaign.id, index + 1);
+  });
+
+  return campaigns.map((campaign) => {
+    const rank = rankById.get(campaign.id) || null;
+
+    const isBestCampaign = rank === 1 && totalRankedCampaigns > 0;
+    const isWorstCampaign =
+      rank === totalRankedCampaigns && totalRankedCampaigns > 1;
+
+    let performanceLabel = "Not ranked";
+
+    if (isBestCampaign) {
+      performanceLabel = "Best campaign";
+    } else if (isWorstCampaign) {
+      performanceLabel = "Worst campaign";
+    } else if (rank) {
+      performanceLabel = `Rank #${rank}`;
+    }
+
+    return {
+      ...campaign,
+      rank,
+      totalRankedCampaigns,
+      isBestCampaign,
+      isWorstCampaign,
+      performanceLabel,
+    };
+  });
+}
+
 const campaignSelect = {
   id: true,
+  shop: true,
   publicToken: true,
   name: true,
   sourceType: true,
@@ -184,6 +280,7 @@ const campaignSelect = {
   createdAt: true,
   updatedAt: true,
 };
+
 // GET /api/campaigns
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
@@ -206,12 +303,15 @@ export async function loader({ request }) {
     enrichCampaign(campaign, clicks7dMap, clicks30dMap),
   );
 
-  return Response.json({ campaigns: enriched });
+  const rankedCampaigns = addCampaignRanking(enriched);
+
+  return Response.json({ campaigns: rankedCampaigns });
 }
 
 // POST /api/campaigns
 async function handleCreateCampaign(request, shop) {
   let body;
+
   try {
     body = await request.json();
   } catch {
@@ -224,11 +324,12 @@ async function handleCreateCampaign(request, shop) {
   const status = cleanStr(body?.status || "active");
 
   const targetUrlParsed = parseOptionalUrl(body?.targetUrl);
+
   if (!targetUrlParsed.ok) {
     return Response.json({ error: targetUrlParsed.error }, { status: 400 });
   }
-  const targetUrl = targetUrlParsed.value;
 
+  const targetUrl = targetUrlParsed.value;
   const costCents = parseMoneyToCents(body?.cost, 0);
 
   if (!name) {
@@ -254,7 +355,7 @@ async function handleCreateCampaign(request, shop) {
 
   if (existing) {
     return Response.json(
-      { error: "Campaign name already exists (use a different name)." },
+      { error: "Campaign name already exists. Use a different name." },
       { status: 409 },
     );
   }
@@ -279,6 +380,7 @@ async function handleCreateCampaign(request, shop) {
     );
   } catch (error) {
     console.error("Could not create campaign:", error);
+
     return Response.json(
       { error: "Could not create campaign." },
       { status: 500 },
@@ -289,6 +391,7 @@ async function handleCreateCampaign(request, shop) {
 // DELETE /api/campaigns
 async function handleDeleteCampaign(request, shop) {
   let body;
+
   try {
     body = await request.json();
   } catch {
@@ -322,6 +425,7 @@ async function handleDeleteCampaign(request, shop) {
     });
   } catch (error) {
     console.error("Could not delete campaign:", error);
+
     return Response.json(
       { error: "Could not delete campaign." },
       { status: 500 },

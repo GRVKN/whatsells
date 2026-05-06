@@ -90,6 +90,103 @@ function buildGoUrl(token) {
   return new URL(`/go/${token}`, TRACK_BASE_URL).toString();
 }
 
+function numberOrZero(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined) return null;
+
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function getCampaignPerformance(campaign) {
+  const costCents = numberOrZero(campaign?.costCents);
+  const revenueCents = numberOrZero(campaign?.revenueCents);
+  const profitCents =
+    campaign?.profitCents !== null && campaign?.profitCents !== undefined
+      ? numberOrZero(campaign.profitCents)
+      : revenueCents - costCents;
+
+  const clicks7d = numberOrZero(campaign?.clicks7d);
+  const clicks30d = numberOrZero(campaign?.clicks30d);
+  const clicksTotal = numberOrZero(campaign?.clicksCount);
+  const orders = numberOrZero(campaign?.ordersCount);
+
+  const roi = numberOrNull(campaign?.roi);
+  const roas = numberOrNull(campaign?.roas);
+  const conversionRate = numberOrNull(campaign?.conversionRate);
+
+  return {
+    profitCents,
+    roi: roi ?? 0,
+    revenueCents,
+    orders,
+    conversionRate: conversionRate ?? 0,
+    roas: roas ?? 0,
+    clicks30d,
+    clicks7d,
+    clicksTotal,
+    costCents,
+    createdAtMs: campaign?.createdAt ? new Date(campaign.createdAt).getTime() : 0,
+  };
+}
+
+function hasCampaignSignal(campaign) {
+  const p = getCampaignPerformance(campaign);
+
+  return (
+    p.costCents > 0 ||
+    p.revenueCents > 0 ||
+    p.orders > 0 ||
+    p.clicksTotal > 0 ||
+    p.clicks30d > 0 ||
+    p.clicks7d > 0
+  );
+}
+
+function compareBestCampaigns(a, b) {
+  const pa = getCampaignPerformance(a);
+  const pb = getCampaignPerformance(b);
+
+  const checks = [
+    pb.profitCents - pa.profitCents,
+    pb.roi - pa.roi,
+    pb.revenueCents - pa.revenueCents,
+    pb.orders - pa.orders,
+    pb.conversionRate - pa.conversionRate,
+    pb.roas - pa.roas,
+    pb.clicks30d - pa.clicks30d,
+    pb.clicksTotal - pa.clicksTotal,
+    pa.costCents - pb.costCents,
+    pb.createdAtMs - pa.createdAtMs,
+  ];
+
+  return checks.find((value) => value !== 0) || 0;
+}
+
+function compareWorstCampaigns(a, b) {
+  const pa = getCampaignPerformance(a);
+  const pb = getCampaignPerformance(b);
+
+  const checks = [
+    pa.profitCents - pb.profitCents,
+    pa.roi - pb.roi,
+    pa.revenueCents - pb.revenueCents,
+    pa.orders - pb.orders,
+    pa.conversionRate - pb.conversionRate,
+    pa.roas - pb.roas,
+    pa.clicks30d - pb.clicks30d,
+    pa.clicksTotal - pb.clicksTotal,
+    pb.costCents - pa.costCents,
+    pb.createdAtMs - pa.createdAtMs,
+  ];
+
+  return checks.find((value) => value !== 0) || 0;
+}
+
 // ----------------------
 // component
 // ----------------------
@@ -142,25 +239,23 @@ export default function AppIndex() {
     return map;
   }, [sourceOptions]);
 
-    const bestCampaign = useMemo(() => {
-    const valid = campaigns.filter(
-      (campaign) => campaign?.roi !== null && campaign?.roi !== undefined,
-    );
+const rankedCampaigns = useMemo(() => {
+  return campaigns.filter((campaign) => {
+    return campaign?.id && hasCampaignSignal(campaign);
+  });
+}, [campaigns]);
 
-    if (!valid.length) return null;
+const bestCampaign = useMemo(() => {
+  if (!rankedCampaigns.length) return null;
 
-    return [...valid].sort((a, b) => Number(b.roi) - Number(a.roi))[0];
-  }, [campaigns]);
+  return [...rankedCampaigns].sort(compareBestCampaigns)[0];
+}, [rankedCampaigns]);
 
-  const worstCampaign = useMemo(() => {
-    const valid = campaigns.filter(
-      (campaign) => campaign?.roi !== null && campaign?.roi !== undefined,
-    );
+const worstCampaign = useMemo(() => {
+  if (!rankedCampaigns.length) return null;
 
-    if (!valid.length) return null;
-
-    return [...valid].sort((a, b) => Number(a.roi) - Number(b.roi))[0];
-  }, [campaigns]);
+  return [...rankedCampaigns].sort(compareWorstCampaigns)[0];
+}, [rankedCampaigns]);
 
   const resetForm = useCallback(() => {
     setName("");
@@ -367,10 +462,15 @@ const rows = useMemo(() => {
                         {bestCampaign ? (
                           <>
                             <Text as="p">{bestCampaign.name}</Text>
-                            <Text as="p" tone="subdued">
-                              ROI: {formatPercent(bestCampaign.roi)} · Revenue:{" "}
-                              {formatMoneyFromCents(bestCampaign.revenueCents || 0)}
-                            </Text>
+<Text as="p" tone="subdued">
+  Profit: {formatMoneyFromCents(bestCampaign.profitCents || 0)} · ROI:{" "}
+  {formatPercent(bestCampaign.roi)}
+</Text>
+
+<Text as="p" tone="subdued">
+  Revenue: {formatMoneyFromCents(bestCampaign.revenueCents || 0)} · Orders:{" "}
+  {bestCampaign.ordersCount ?? 0} · Clicks: {bestCampaign.clicksCount ?? 0}
+</Text>
                           </>
                         ) : (
                           <Text as="p" tone="subdued">
@@ -390,10 +490,15 @@ const rows = useMemo(() => {
                         {worstCampaign ? (
                           <>
                             <Text as="p">{worstCampaign.name}</Text>
-                            <Text as="p" tone="subdued">
-                              ROI: {formatPercent(worstCampaign.roi)} · Revenue:{" "}
-                              {formatMoneyFromCents(worstCampaign.revenueCents || 0)}
-                            </Text>
+<Text as="p" tone="subdued">
+  Profit: {formatMoneyFromCents(worstCampaign.profitCents || 0)} · ROI:{" "}
+  {formatPercent(worstCampaign.roi)}
+</Text>
+
+<Text as="p" tone="subdued">
+  Revenue: {formatMoneyFromCents(worstCampaign.revenueCents || 0)} · Orders:{" "}
+  {worstCampaign.ordersCount ?? 0} · Clicks: {worstCampaign.clicksCount ?? 0}
+</Text>
                           </>
                         ) : (
                           <Text as="p" tone="subdued">
@@ -463,7 +568,7 @@ const rows = useMemo(() => {
                       loading={loading}
                       disabled={!name.trim()}
                     >
-                      Create campaign
+                       Save campaign
                     </Button>
                   </div>
                 </InlineStack>
