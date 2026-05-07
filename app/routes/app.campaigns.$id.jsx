@@ -447,34 +447,128 @@ function KpiCard({ label, value, helpText }) {
   );
 }
 
-function ChartTable({ rows }) {
-  const chartRows = rows.map((row) => [
-    row.label,
-    String(row.clicks),
-    String(row.orders),
-    formatMoneyFromCents(row.revenueCents),
-  ]);
+function getMaxValue(rows, metric) {
+  const values = rows.map((row) => numberOrZero(row[metric]));
+  return Math.max(...values, 1);
+}
+
+function MiniBarChart({ title, rows, metric, formatter }) {
+  const maxValue = getMaxValue(rows, metric);
 
   return (
     <Card>
       <BlockStack gap="300">
         <Text variant="headingMd" as="h2">
-          Performance by day
+          {title}
         </Text>
 
-        <DataTable
-          columnContentTypes={["text", "numeric", "numeric", "text"]}
-          headings={["Date", "Clicks", "Orders", "Revenue"]}
-          rows={
-            chartRows.length
-              ? chartRows
-              : [["—", "—", "—", "—"]]
-          }
-        />
+        {rows.length ? (
+          <BlockStack gap="250">
+            {rows.map((row) => {
+              const value = numberOrZero(row[metric]);
+              const percent = Math.min((value / maxValue) * 100, 100);
+              const width = value > 0 ? Math.max(percent, 4) : 0;
+
+              return (
+                <div
+                  key={`${title}-${row.date}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "70px 1fr 90px",
+                    alignItems: "center",
+                    gap: "12px",
+                  }}
+                >
+                  <Text as="span" tone="subdued">
+                    {row.label}
+                  </Text>
+
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "14px",
+                      borderRadius: "999px",
+                      background: "#e5e5e5",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${width}%`,
+                        height: "100%",
+                        borderRadius: "999px",
+                        background: "#111111",
+                        transition: "width 180ms ease",
+                      }}
+                    />
+                  </div>
+
+                  <Text as="span" alignment="end">
+                    {formatter ? formatter(value) : String(value)}
+                  </Text>
+                </div>
+              );
+            })}
+          </BlockStack>
+        ) : (
+          <Text as="p" tone="subdued">
+            No data for this range yet.
+          </Text>
+        )}
       </BlockStack>
     </Card>
   );
 }
+
+function ChartSection({ rows }) {
+  return (
+    <BlockStack gap="300">
+      <MiniBarChart
+        title="Clicks over time"
+        rows={rows}
+        metric="clicks"
+      />
+
+      <MiniBarChart
+        title="Orders over time"
+        rows={rows}
+        metric="orders"
+      />
+
+      <MiniBarChart
+        title="Revenue over time"
+        rows={rows}
+        metric="revenueCents"
+        formatter={formatMoneyFromCents}
+      />
+
+      <Card>
+        <BlockStack gap="300">
+          <Text variant="headingMd" as="h2">
+            Performance by day
+          </Text>
+
+          <DataTable
+            columnContentTypes={["text", "numeric", "numeric", "text"]}
+            headings={["Date", "Clicks", "Orders", "Revenue"]}
+            rows={
+              rows.length
+                ? rows.map((row) => [
+                    row.label,
+                    String(row.clicks),
+                    String(row.orders),
+
+                    formatMoneyFromCents(row.revenueCents),
+                  ])
+                : [["—", "—", "—", "—"]]
+            }
+          />
+        </BlockStack>
+      </Card>
+    </BlockStack>
+  );
+}
+
 
 export default function CampaignDetails() {
   const location = useLocation();
@@ -648,7 +742,7 @@ export default function CampaignDetails() {
         </Layout.Section>
 
         <Layout.Section>
-          <ChartTable rows={chartRows} />
+          <ChartSection rows={chartRows} />
         </Layout.Section>
 
         <Layout.Section>
