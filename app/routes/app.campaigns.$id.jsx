@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { useLoaderData, useLocation } from "react-router";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
+import CampaignPerformanceChart from "../components/CampaignPerformanceChart";
 import {
   Page,
   Layout,
@@ -17,7 +19,6 @@ import {
 const TRACK_BASE_URL =
   process.env.TRACK_BASE_URL || "https://app.whatsells.dev";
 
-
 function formatDateTime(value) {
   if (!value) return "—";
 
@@ -25,19 +26,6 @@ function formatDateTime(value) {
     return new Intl.DateTimeFormat("de-DE", {
       dateStyle: "medium",
       timeStyle: "short",
-    }).format(new Date(value));
-  } catch {
-    return "—";
-  }
-}
-
-function formatDateShort(value) {
-  if (!value) return "—";
-
-  try {
-    return new Intl.DateTimeFormat("de-DE", {
-      day: "2-digit",
-      month: "2-digit",
     }).format(new Date(value));
   } catch {
     return "—";
@@ -80,6 +68,7 @@ function calcProfit(costCents, revenueCents) {
 
 function calcRoas(costCents, revenueCents) {
   const cost = numberOrZero(costCents);
+
   if (cost <= 0) return null;
 
   return numberOrZero(revenueCents) / cost;
@@ -87,6 +76,7 @@ function calcRoas(costCents, revenueCents) {
 
 function calcRoi(costCents, revenueCents) {
   const cost = numberOrZero(costCents);
+
   if (cost <= 0) return null;
 
   return calcProfit(costCents, revenueCents) / cost;
@@ -94,6 +84,7 @@ function calcRoi(costCents, revenueCents) {
 
 function calcConversionRate(clicks, orders) {
   const totalClicks = numberOrZero(clicks);
+
   if (totalClicks <= 0) return 0;
 
   return numberOrZero(orders) / totalClicks;
@@ -101,6 +92,7 @@ function calcConversionRate(clicks, orders) {
 
 function calcAverageOrderValue(revenueCents, orders) {
   const totalOrders = numberOrZero(orders);
+
   if (totalOrders <= 0) return null;
 
   return Math.round(numberOrZero(revenueCents) / totalOrders);
@@ -117,15 +109,33 @@ function calcBreakEvenOrders(costCents, avgOrderValueCents) {
 }
 
 function normalizeRange(value) {
-  if (value === "7d" || value === "30d" || value === "all") {
+  if (
+    value === "live" ||
+    value === "24h" ||
+    value === "7d" ||
+    value === "30d" ||
+    value === "all"
+  ) {
     return value;
   }
 
-  return "7d";
+  return "30d";
 }
 
 function getRangeStart(range) {
   const now = new Date();
+
+  if (range === "live") {
+    const d = new Date(now);
+    d.setMinutes(d.getMinutes() - 60);
+    return d;
+  }
+
+  if (range === "24h") {
+    const d = new Date(now);
+    d.setHours(d.getHours() - 24);
+    return d;
+  }
 
   if (range === "7d") {
     const d = new Date(now);
@@ -143,9 +153,54 @@ function getRangeStart(range) {
 }
 
 function getRangeLabel(range) {
+  if (range === "live") return "Live · last 60 minutes";
+  if (range === "24h") return "Last 24 hours";
   if (range === "7d") return "Last 7 days";
   if (range === "30d") return "Last 30 days";
+
   return "All time";
+}
+
+function getBucketForRange(range) {
+  if (range === "live") return "minute";
+  if (range === "24h") return "hour";
+  if (range === "all") return "month";
+
+  return "day";
+}
+
+function startOfHour(date) {
+  const d = new Date(date);
+  d.setMinutes(0, 0, 0);
+  return d;
+}
+
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfMonth(date) {
+  const d = new Date(date);
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfTenMinuteBucket(date) {
+  const d = new Date(date);
+  const minutes = d.getMinutes();
+  d.setMinutes(Math.floor(minutes / 10) * 10, 0, 0);
+  return d;
+}
+
+function getBucketDate(date, bucket) {
+  if (bucket === "minute") return startOfTenMinuteBucket(date);
+  if (bucket === "hour") return startOfHour(date);
+  if (bucket === "month") return startOfMonth(date);
+
+  return startOfDay(date);
 }
 
 function buildRangeUrl(campaignId, range, currentSearch = "") {
@@ -193,17 +248,32 @@ function getCampaignRanking(allCampaigns, currentCampaignId) {
     .sort(compareCampaignPerformance);
 
   const totalRankedCampaigns = ranked.length;
-  const rankIndex = ranked.findIndex((campaign) => campaign.id === currentCampaignId);
+  const rankIndex = ranked.findIndex(
+    (campaign) => campaign.id === currentCampaignId,
+  );
+
   const rank = rankIndex >= 0 ? rankIndex + 1 : null;
 
-  const isBestCampaign = rank === 1 && totalRankedCampaigns > 0;
+  const current = ranked.find((campaign) => campaign.id === currentCampaignId);
+  const currentProfit = current
+    ? calcProfit(current.costCents, current.revenueCents)
+    : 0;
+
+  const isBestCampaign =
+    rank === 1 && totalRankedCampaigns > 0 && currentProfit > 0;
+
+  const isTopRanked =
+    rank === 1 && totalRankedCampaigns > 0 && currentProfit <= 0;
+
   const isWorstCampaign =
     rank === totalRankedCampaigns && totalRankedCampaigns > 1;
 
-  let performanceLabel = "Not ranked yet";
+  let performanceLabel = "Needs data";
 
   if (isBestCampaign) {
     performanceLabel = "Best campaign";
+  } else if (isTopRanked) {
+    performanceLabel = "Top ranked";
   } else if (isWorstCampaign) {
     performanceLabel = "Worst campaign";
   } else if (rank) {
@@ -214,28 +284,30 @@ function getCampaignRanking(allCampaigns, currentCampaignId) {
     rank,
     totalRankedCampaigns,
     isBestCampaign,
+    isTopRanked,
     isWorstCampaign,
     performanceLabel,
   };
 }
 
-function buildDailyRows(events) {
+function buildChartRows(events, bucket, campaignCostCents) {
   const map = new Map();
 
   for (const event of events) {
-    const dateKey = new Date(event.createdAt).toISOString().slice(0, 10);
+    const bucketDate = getBucketDate(event.createdAt, bucket);
+    const key = bucketDate.toISOString();
 
-    if (!map.has(dateKey)) {
-      map.set(dateKey, {
-        date: dateKey,
-        label: formatDateShort(event.createdAt),
+    if (!map.has(key)) {
+      map.set(key, {
+        date: key,
         clicks: 0,
         orders: 0,
         revenueCents: 0,
+        profitCents: 0,
       });
     }
 
-    const row = map.get(dateKey);
+    const row = map.get(key);
 
     if (event.type === "click") {
       row.clicks += 1;
@@ -247,9 +319,22 @@ function buildDailyRows(events) {
     }
   }
 
-  return [...map.values()].sort((a, b) => {
+  const rows = [...map.values()].sort((a, b) => {
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
+
+  return rows.map((row) => ({
+    ...row,
+    profitCents: row.revenueCents - numberOrZero(campaignCostCents),
+  }));
+}
+
+function getMetricLabel(metric) {
+  if (metric === "orders") return "Orders";
+  if (metric === "revenueCents") return "Revenue";
+  if (metric === "profitCents") return "Profit";
+
+  return "Clicks";
 }
 
 export async function loader({ request, params }) {
@@ -265,6 +350,7 @@ export async function loader({ request, params }) {
     const url = new URL(request.url);
     const range = normalizeRange(url.searchParams.get("range"));
     const rangeStart = getRangeStart(range);
+    const bucket = getBucketForRange(range);
 
     const campaign = await db.campaign.findFirst({
       where: { id, shop },
@@ -295,56 +381,59 @@ export async function loader({ request, params }) {
       ...(rangeStart ? { createdAt: { gte: rangeStart } } : {}),
     };
 
-    const events = await db.event.findMany({
-      where: eventWhere,
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      select: {
-        id: true,
-        type: true,
-        createdAt: true,
-        referer: true,
-        lang: true,
-        valueCents: true,
-        currency: true,
-        orderId: true,
-      },
-    });
+    const [events, allCampaigns, clicks7d, clicks30d] = await Promise.all([
+      db.event.findMany({
+        where: eventWhere,
+        orderBy: { createdAt: "asc" },
+        take: range === "all" ? 3000 : 1000,
+        select: {
+          id: true,
+          type: true,
+          createdAt: true,
+          referer: true,
+          lang: true,
+          valueCents: true,
+          currency: true,
+          orderId: true,
+        },
+      }),
 
-    const allCampaigns = await db.campaign.findMany({
-      where: { shop },
-      select: {
-        id: true,
-        name: true,
-        costCents: true,
-        clicksCount: true,
-        revenueCents: true,
-        ordersCount: true,
-        createdAt: true,
-      },
-    });
+      db.campaign.findMany({
+        where: { shop },
+        select: {
+          id: true,
+          name: true,
+          costCents: true,
+          clicksCount: true,
+          revenueCents: true,
+          ordersCount: true,
+          createdAt: true,
+        },
+      }),
 
-    const clicks7d = await db.event.count({
-      where: {
-        campaignId: campaign.id,
-        type: "click",
-        createdAt: { gte: getRangeStart("7d") },
-      },
-    });
+      db.event.count({
+        where: {
+          campaignId: campaign.id,
+          type: "click",
+          createdAt: { gte: getRangeStart("7d") },
+        },
+      }),
 
-    const clicks30d = await db.event.count({
-      where: {
-        campaignId: campaign.id,
-        type: "click",
-        createdAt: { gte: getRangeStart("30d") },
-      },
-    });
+      db.event.count({
+        where: {
+          campaignId: campaign.id,
+          type: "click",
+          createdAt: { gte: getRangeStart("30d") },
+        },
+      }),
+    ]);
 
     const rangeClicks = events.filter((event) => event.type === "click").length;
     const rangeOrders = events.filter((event) => event.type === "purchase").length;
 
     const rangeRevenueCents = events.reduce((sum, event) => {
       if (event.type !== "purchase") return sum;
+
       return sum + numberOrZero(event.valueCents);
     }, 0);
 
@@ -374,12 +463,18 @@ export async function loader({ request, params }) {
     const rangeRoas = calcRoas(campaign.costCents, rangeRevenueCents);
 
     const ranking = getCampaignRanking(allCampaigns, campaign.id);
-    const chartRows = buildDailyRows([...events].reverse());
+
+    const chartRows = buildChartRows(
+      events,
+      bucket,
+      campaign.costCents,
+    );
 
     return {
       loadError: null,
       range,
       rangeLabel: getRangeLabel(range),
+      bucket,
       campaign: {
         ...campaign,
         clicks7d,
@@ -403,7 +498,7 @@ export async function loader({ request, params }) {
         roas: rangeRoas,
       },
       chartRows,
-      recentEvents: events.slice(0, 30),
+      recentEvents: [...events].reverse().slice(0, 30),
     };
   } catch (error) {
     if (error instanceof Response) {
@@ -415,8 +510,9 @@ export async function loader({ request, params }) {
     return {
       loadError:
         error?.message || "Campaign details could not be loaded.",
-      range: "7d",
-      rangeLabel: "Last 7 days",
+      range: "30d",
+      rangeLabel: "Last 30 days",
+      bucket: "day",
       campaign: null,
       rangeStats: null,
       chartRows: [],
@@ -433,9 +529,11 @@ function KpiCard({ label, value, helpText }) {
           <Text variant="headingSm" as="h3">
             {label}
           </Text>
+
           <Text variant="headingLg" as="p">
             {value}
           </Text>
+
           {helpText ? (
             <Text as="p" tone="subdued">
               {helpText}
@@ -447,128 +545,44 @@ function KpiCard({ label, value, helpText }) {
   );
 }
 
-function getMaxValue(rows, metric) {
-  const values = rows.map((row) => numberOrZero(row[metric]));
-  return Math.max(...values, 1);
+function MetricButton({ active, children, onClick }) {
+  return (
+    <Button
+      variant={active ? "primary" : "secondary"}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
 }
 
-function MiniBarChart({ title, rows, metric, formatter }) {
-  const maxValue = getMaxValue(rows, metric);
-
+function ChartTable({ rows }) {
   return (
     <Card>
       <BlockStack gap="300">
         <Text variant="headingMd" as="h2">
-          {title}
+          Performance by period
         </Text>
 
-        {rows.length ? (
-          <BlockStack gap="250">
-            {rows.map((row) => {
-              const value = numberOrZero(row[metric]);
-              const percent = Math.min((value / maxValue) * 100, 100);
-              const width = value > 0 ? Math.max(percent, 4) : 0;
-
-              return (
-                <div
-                  key={`${title}-${row.date}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "70px 1fr 90px",
-                    alignItems: "center",
-                    gap: "12px",
-                  }}
-                >
-                  <Text as="span" tone="subdued">
-                    {row.label}
-                  </Text>
-
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "14px",
-                      borderRadius: "999px",
-                      background: "#e5e5e5",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${width}%`,
-                        height: "100%",
-                        borderRadius: "999px",
-                        background: "#111111",
-                        transition: "width 180ms ease",
-                      }}
-                    />
-                  </div>
-
-                  <Text as="span" alignment="end">
-                    {formatter ? formatter(value) : String(value)}
-                  </Text>
-                </div>
-              );
-            })}
-          </BlockStack>
-        ) : (
-          <Text as="p" tone="subdued">
-            No data for this range yet.
-          </Text>
-        )}
+        <DataTable
+          columnContentTypes={["text", "numeric", "numeric", "text", "text"]}
+          headings={["Period", "Clicks", "Orders", "Revenue", "Profit"]}
+          rows={
+            rows.length
+              ? rows.map((row) => [
+                  formatDateTime(row.date),
+                  String(row.clicks),
+                  String(row.orders),
+                  formatMoneyFromCents(row.revenueCents),
+                  formatMoneyFromCents(row.profitCents),
+                ])
+              : [["—", "—", "—", "—", "—"]]
+          }
+        />
       </BlockStack>
     </Card>
   );
 }
-
-function ChartSection({ rows }) {
-  return (
-    <BlockStack gap="300">
-      <MiniBarChart
-        title="Clicks over time"
-        rows={rows}
-        metric="clicks"
-      />
-
-      <MiniBarChart
-        title="Orders over time"
-        rows={rows}
-        metric="orders"
-      />
-
-      <MiniBarChart
-        title="Revenue over time"
-        rows={rows}
-        metric="revenueCents"
-        formatter={formatMoneyFromCents}
-      />
-
-      <Card>
-        <BlockStack gap="300">
-          <Text variant="headingMd" as="h2">
-            Performance by day
-          </Text>
-
-          <DataTable
-            columnContentTypes={["text", "numeric", "numeric", "text"]}
-            headings={["Date", "Clicks", "Orders", "Revenue"]}
-            rows={
-              rows.length
-                ? rows.map((row) => [
-                    row.label,
-                    String(row.clicks),
-                    String(row.orders),
-
-                    formatMoneyFromCents(row.revenueCents),
-                  ])
-                : [["—", "—", "—", "—"]]
-            }
-          />
-        </BlockStack>
-      </Card>
-    </BlockStack>
-  );
-}
-
 
 export default function CampaignDetails() {
   const location = useLocation();
@@ -578,10 +592,23 @@ export default function CampaignDetails() {
     campaign,
     range,
     rangeLabel,
+    bucket,
     rangeStats,
     chartRows,
     recentEvents,
   } = useLoaderData();
+
+  const [metric, setMetric] = useState("clicks");
+
+  useEffect(() => {
+    if (range !== "live") return;
+
+    const interval = window.setInterval(() => {
+      window.location.reload();
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [range]);
 
   if (loadError || !campaign) {
     return (
@@ -637,7 +664,11 @@ export default function CampaignDetails() {
 
                   <InlineStack gap="200">
                     <Badge
-                      tone={campaign.status === "active" ? "success" : "attention"}
+                      tone={
+                        campaign.status === "active"
+                          ? "success"
+                          : "attention"
+                      }
                     >
                       {campaign.status}
                     </Badge>
@@ -647,7 +678,9 @@ export default function CampaignDetails() {
                 </BlockStack>
 
                 <BlockStack gap="150">
-                  <Badge tone={rankingTone}>{campaign.performanceLabel}</Badge>
+                  <Badge tone={rankingTone}>
+                    {campaign.performanceLabel}
+                  </Badge>
 
                   {campaign.rank ? (
                     <Text as="p" tone="subdued">
@@ -665,7 +698,21 @@ export default function CampaignDetails() {
                 </BlockStack>
               </InlineStack>
 
-              <InlineStack gap="200">
+              <InlineStack gap="200" wrap>
+                <Button
+                  variant={range === "live" ? "primary" : "secondary"}
+                  url={buildRangeUrl(campaign.id, "live", location.search)}
+                >
+                  Live
+                </Button>
+
+                <Button
+                  variant={range === "24h" ? "primary" : "secondary"}
+                  url={buildRangeUrl(campaign.id, "24h", location.search)}
+                >
+                  24h
+                </Button>
+
                 <Button
                   variant={range === "7d" ? "primary" : "secondary"}
                   url={buildRangeUrl(campaign.id, "7d", location.search)}
@@ -690,6 +737,7 @@ export default function CampaignDetails() {
 
               <Text as="p" tone="subdued">
                 Current filter: {rangeLabel}
+                {range === "live" ? " · auto refresh every 30 seconds" : ""}
               </Text>
             </BlockStack>
           </Card>
@@ -742,7 +790,61 @@ export default function CampaignDetails() {
         </Layout.Section>
 
         <Layout.Section>
-          <ChartSection rows={chartRows} />
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack align="space-between" gap="300" wrap>
+                <BlockStack gap="100">
+                  <Text variant="headingMd" as="h2">
+                    {getMetricLabel(metric)} over time
+                  </Text>
+
+                  <Text as="p" tone="subdued">
+                    {rangeLabel}
+                  </Text>
+                </BlockStack>
+
+                <InlineStack gap="200" wrap>
+                  <MetricButton
+                    active={metric === "clicks"}
+                    onClick={() => setMetric("clicks")}
+                  >
+                    Clicks
+                  </MetricButton>
+
+                  <MetricButton
+                    active={metric === "orders"}
+                    onClick={() => setMetric("orders")}
+                  >
+                    Orders
+                  </MetricButton>
+
+                  <MetricButton
+                    active={metric === "revenueCents"}
+                    onClick={() => setMetric("revenueCents")}
+                  >
+                    Revenue
+                  </MetricButton>
+
+                  <MetricButton
+                    active={metric === "profitCents"}
+                    onClick={() => setMetric("profitCents")}
+                  >
+                    Profit
+                  </MetricButton>
+                </InlineStack>
+              </InlineStack>
+
+              <CampaignPerformanceChart
+                data={chartRows}
+                metric={metric}
+                bucket={bucket}
+              />
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        <Layout.Section>
+          <ChartTable rows={chartRows} />
         </Layout.Section>
 
         <Layout.Section>
@@ -761,7 +863,10 @@ export default function CampaignDetails() {
                   ["Clicks total", String(campaign.clicksCount ?? 0)],
                   ["Orders total", String(campaign.ordersCount ?? 0)],
                   ["Conversion total", formatPercent(campaign.conversionRate)],
-                  ["Revenue total", formatMoneyFromCents(campaign.revenueCents || 0)],
+                  [
+                    "Revenue total",
+                    formatMoneyFromCents(campaign.revenueCents || 0),
+                  ],
                   ["Cost", formatMoneyFromCents(campaign.costCents || 0)],
                   ["Profit total", formatMoneyFromCents(campaign.profitCents || 0)],
                   ["ROI total", formatPercent(campaign.roi)],
