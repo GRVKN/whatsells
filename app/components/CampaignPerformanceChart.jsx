@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+const CHART_HEIGHT = 320;
+const WRAPPER_HEIGHT = 340;
+const MIN_CHART_WIDTH = 320;
 
 function formatMoneyFromCents(cents) {
   const value = Number(cents || 0) / 100;
@@ -58,6 +62,10 @@ function formatValue(value, metric) {
     return `${num.toFixed(1)}%`;
   }
 
+  if (metric === "roas") {
+    return `${num.toFixed(2)}x`;
+  }
+
   return String(value ?? 0);
 }
 
@@ -70,6 +78,10 @@ function formatYAxisValue(value, metric) {
 
   if (metric === "conversionRate") {
     return `${num}%`;
+  }
+
+  if (metric === "roas") {
+    return `${num}x`;
   }
 
   return String(value ?? 0);
@@ -128,8 +140,11 @@ export default function CampaignPerformanceChart({
   metric = "clicks",
   bucket = "day",
 }) {
+  const wrapperRef = useRef(null);
+
   const [charts, setCharts] = useState(null);
   const [chartError, setChartError] = useState("");
+  const [chartWidth, setChartWidth] = useState(0);
 
   const color = useMemo(() => getChartColor(metric), [metric]);
 
@@ -167,13 +182,45 @@ export default function CampaignPerformanceChart({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const element = wrapperRef.current;
+    if (!element) return undefined;
+
+    function updateWidth() {
+      const rect = element.getBoundingClientRect();
+      const nextWidth = Math.floor(rect.width);
+
+      if (nextWidth > 0) {
+        setChartWidth(Math.max(nextWidth, MIN_CHART_WIDTH));
+      }
+    }
+
+    updateWidth();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateWidth();
+    });
+
+    resizeObserver.observe(element);
+
+    const timeoutId = window.setTimeout(updateWidth, 150);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   if (chartError) {
     return (
       <div
+        ref={wrapperRef}
         style={{
           width: "100%",
           minWidth: 0,
-          height: 340,
+          height: WRAPPER_HEIGHT,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -188,10 +235,11 @@ export default function CampaignPerformanceChart({
   if (!safeData.length) {
     return (
       <div
+        ref={wrapperRef}
         style={{
           width: "100%",
           minWidth: 0,
-          height: 340,
+          height: WRAPPER_HEIGHT,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -203,20 +251,20 @@ export default function CampaignPerformanceChart({
     );
   }
 
-  if (!charts) {
+  if (!charts || chartWidth <= 0) {
     return (
       <div
+        ref={wrapperRef}
         style={{
           width: "100%",
           minWidth: 0,
-          height: 340,
+          height: WRAPPER_HEIGHT,
         }}
       />
     );
   }
 
   const {
-    ResponsiveContainer,
     LineChart,
     Line,
     XAxis,
@@ -227,75 +275,77 @@ export default function CampaignPerformanceChart({
 
   return (
     <div
+      ref={wrapperRef}
       style={{
         width: "100%",
         minWidth: 0,
-        height: 340,
+        height: WRAPPER_HEIGHT,
+        overflow: "hidden",
       }}
     >
-      <ResponsiveContainer width="100%" height={320}>
-        <LineChart
-          data={safeData}
-          margin={{
-            top: 16,
-            right: 18,
-            left: 4,
-            bottom: 8,
-          }}
-        >
-          <CartesianGrid stroke="#eef0f2" vertical={false} />
+      <LineChart
+        width={chartWidth}
+        height={CHART_HEIGHT}
+        data={safeData}
+        margin={{
+          top: 16,
+          right: 18,
+          left: 4,
+          bottom: 8,
+        }}
+      >
+        <CartesianGrid stroke="#eef0f2" vertical={false} />
 
-          <XAxis
-            dataKey="date"
-            tickFormatter={(value) => {
-              if (bucket === "minute" || bucket === "hour") {
-                try {
-                  return new Intl.DateTimeFormat("de-DE", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }).format(new Date(value));
-                } catch {
-                  return String(value);
-                }
+        <XAxis
+          dataKey="date"
+          tickFormatter={(value) => {
+            if (bucket === "minute" || bucket === "hour") {
+              try {
+                return new Intl.DateTimeFormat("de-DE", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(new Date(value));
+              } catch {
+                return String(value);
               }
-
-              return formatDateLabel(value);
-            }}
-            tick={{ fontSize: 12, fill: "#6d7175" }}
-            axisLine={false}
-            tickLine={false}
-            minTickGap={20}
-          />
-
-          <YAxis
-            tick={{ fontSize: 12, fill: "#6d7175" }}
-            axisLine={false}
-            tickLine={false}
-            width={64}
-            tickFormatter={(value) => formatYAxisValue(value, metric)}
-          />
-
-          <Tooltip
-            content={
-              <CustomTooltip
-                metric={metric}
-                bucket={bucket}
-              />
             }
-          />
 
-          <Line
-            type="monotone"
-            dataKey={metric}
-            stroke={color}
-            strokeWidth={3}
-            dot={false}
-            activeDot={{ r: 5 }}
-            connectNulls
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+            return formatDateLabel(value);
+          }}
+          tick={{ fontSize: 12, fill: "#6d7175" }}
+          axisLine={false}
+          tickLine={false}
+          minTickGap={20}
+        />
+
+        <YAxis
+          tick={{ fontSize: 12, fill: "#6d7175" }}
+          axisLine={false}
+          tickLine={false}
+          width={64}
+          tickFormatter={(value) => formatYAxisValue(value, metric)}
+        />
+
+        <Tooltip
+          content={
+            <CustomTooltip
+              metric={metric}
+              bucket={bucket}
+            />
+          }
+        />
+
+        <Line
+          type="monotone"
+          dataKey={metric}
+          stroke={color}
+          strokeWidth={3}
+          dot={false}
+          activeDot={{ r: 5 }}
+          connectNulls
+          isAnimationActive={false}
+        />
+      </LineChart>
     </div>
   );
 }
