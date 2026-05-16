@@ -28,6 +28,16 @@ async function safeCopy(text) {
   }
 }
 
+function sanitizeFileName(value) {
+  return (
+    String(value || "campaign-qr")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "") || "campaign-qr"
+  );
+}
+
 export default function CampaignQr({
   open,
   onClose,
@@ -50,8 +60,10 @@ export default function CampaignQr({
           width: 320,
           margin: 2,
         });
+
         if (active) setDataUrl(url);
-      } catch {
+      } catch (error) {
+        console.error("QR generation failed:", error);
         if (active) setDataUrl("");
       }
     }
@@ -65,9 +77,10 @@ export default function CampaignQr({
 
   function downloadQr() {
     if (!dataUrl) return;
+
     const a = document.createElement("a");
     a.href = dataUrl;
-    a.download = `${title.replace(/\s+/g, "-").toLowerCase()}-qr.png`;
+    a.download = `${sanitizeFileName(title)}-qr.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -109,7 +122,11 @@ export default function CampaignQr({
               <img
                 src={dataUrl}
                 alt={`${title} QR`}
-                style={{ width: 320, height: 320, objectFit: "contain" }}
+                style={{
+                  width: 320,
+                  height: 320,
+                  objectFit: "contain",
+                }}
               />
             ) : (
               <Text as="p">QR could not be generated.</Text>
@@ -119,8 +136,9 @@ export default function CampaignQr({
           <InlineStack gap="200">
             <Button
               onClick={async () => {
-                await safeCopy(value);
+                await safeCopy(value || "");
               }}
+              disabled={!value}
             >
               Copy link
             </Button>

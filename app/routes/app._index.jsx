@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useLocation } from "react-router";
+import { useLocation, Link } from "react-router";
 
 import CampaignQr from "../components/CampaignQr.jsx";
 import {
@@ -405,13 +405,11 @@ const rows = useMemo(() => {
     Copy
   </Button>
 
-<Button
-  size="slim"
-  variant="secondary"
-  url={`/app/campaigns/${campaign.id}${embeddedQuery}`}
->
-  Details
-</Button>
+<Link to={`/app/campaigns/${campaign.id}${embeddedQuery}`}>
+    <Button size="slim" variant="secondary">
+      Details
+    </Button>
+  </Link>
 
   <Button
     size="slim"

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLoaderData, useLocation } from "react-router";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
-import CampaignPerformanceChart from "../components/CampaignPerformanceChart";
+import CampaignPerformanceChart from "../components/CampaignPerformanceChart.jsx";
 import {
   Page,
   Layout,
@@ -15,9 +15,6 @@ import {
   Button,
   Banner,
 } from "@shopify/polaris";
-
-const TRACK_BASE_URL =
-  process.env.TRACK_BASE_URL || "https://app.whatsells.dev";
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -339,6 +336,11 @@ function getMetricLabel(metric) {
 
 export async function loader({ request, params }) {
   try {
+    const trackBaseUrl =
+      process.env.TRACK_BASE_URL ||
+      process.env.SHOPIFY_APP_URL ||
+      "https://whatsells.onrender.com";
+
     const { session } = await authenticate.admin(request);
     const shop = session.shop;
     const id = String(params.id || "").trim();
@@ -485,7 +487,7 @@ export async function loader({ request, params }) {
         roi,
         roas,
         breakEvenOrders,
-        goUrl: `${TRACK_BASE_URL}/go/${campaign.publicToken}`,
+        goUrl: `${trackBaseUrl}/go/${campaign.publicToken}`,
         ...ranking,
       },
       rangeStats: {

@@ -1,0 +1,308 @@
+[1mdiff --git a/app/CampaignQr.jsx b/app/CampaignQr.jsx[m
+[1mdeleted file mode 100644[m
+[1mindex 2aed20a..0000000[m
+[1m--- a/app/CampaignQr.jsx[m
+[1m+++ /dev/null[m
+[36m@@ -1,175 +0,0 @@[m
+[31m-import { useEffect, useMemo, useState } from "react";[m
+[31m-import QRCode from "qrcode";[m
+[31m-import {[m
+[31m-  Button,[m
+[31m-  InlineStack,[m
+[31m-  Modal,[m
+[31m-  BlockStack,[m
+[31m-  Text,[m
+[31m-  Toast,[m
+[31m-} from "@shopify/polaris";[m
+[31m-[m
+[31m-async function safeCopy(text) {[m
+[31m-  try {[m
+[31m-    if (navigator.clipboard?.writeText) {[m
+[31m-      await navigator.clipboard.writeText(text);[m
+[31m-      return true;[m
+[31m-    }[m
+[31m-  } catch {}[m
+[31m-[m
+[31m-  try {[m
+[31m-    const el = document.createElement("textarea");[m
+[31m-    el.value = text;[m
+[31m-    el.setAttribute("readonly", "");[m
+[31m-    el.style.position = "absolute";[m
+[31m-    el.style.left = "-9999px";[m
+[31m-    document.body.appendChild(el);[m
+[31m-    el.select();[m
+[31m-    const ok = document.execCommand("copy");[m
+[31m-    document.body.removeChild(el);[m
+[31m-    return ok;[m
+[31m-  } catch {[m
+[31m-    return false;[m
+[31m-  }[m
+[31m-}[m
+[31m-[m
+[31m-function sanitizeFileName(value) {[m
+[31m-  return String(value || "campaign-qr")[m
+[31m-    .trim()[m
+[31m-    .toLowerCase()[m
+[31m-    .replace(/[^a-z0-9]+/gi, "-")[m
+[31m-    .replace(/^-+|-+$/g, "") || "campaign-qr";[m
+[31m-}[m
+[31m-[m
+[31m-export default function CampaignQr({[m
+[31m-  open,[m
+[31m-  onClose,[m
+[31m-  value,[m
+[31m-  title = "Campaign QR",[m
+[31m-}) {[m
+[31m-  const [dataUrl, setDataUrl] = useState("");[m
+[31m-  const [toast, setToast] = useState({ active: false, content: "" });[m
+[31m-[m
+[31m-  const fileName = useMemo(() => {[m
+[31m-    return `${sanitizeFileName(title)}-qr.png`;[m
+[31m-  }, [title]);[m
+[31m-[m
+[31m-  useEffect(() => {[m
+[31m-    let active = true;[m
+[31m-[m
+[31m-    async function generateQr() {[m
+[31m-      if (!open || !value) {[m
+[31m-        if (active) setDataUrl("");[m
+[31m-        return;[m
+[31m-      }[m
+[31m-[m
+[31m-      try {[m
+[31m-        const url = await QRCode.toDataURL(value, {[m
+[31m-          width: 320,[m
+[31m-          margin: 2,[m
+[31m-        });[m
+[31m-[m
+[31m-        if (active) setDataUrl(url);[m
+[31m-      } catch (error) {[m
+[31m-        console.error("QR generation failed:", error);[m
+[31m-        if (active) setDataUrl("");[m
+[31m-      }[m
+[31m-    }[m
+[31m-[m
+[31m-    generateQr();[m
+[31m-[m
+[31m-    return () => {[m
+[31m-      active = false;[m
+[31m-    };[m
+[31m-  }, [open, value]);[m
+[31m-[m
+[31m-  function downloadQr() {[m
+[31m-    if (!dataUrl) return;[m
+[31m-[m
+[31m-    const link = document.createElement("a");[m
+[31m-    link.href = dataUrl;[m
+[31m-    link.download = fileName;[m
+[31m-    document.body.appendChild(link);[m
+[31m-    link.click();[m
+[31m-    document.body.removeChild(link);[m
+[31m-[m
+[31m-    setToast({[m
+[31m-      active: true,[m
+[31m-      content: "QR downloaded",[m
+[31m-    });[m
+[31m-  }[m
+[31m-[m
+[31m-  async function copyLink() {[m
+[31m-    const ok = await safeCopy(value || "");[m
+[31m-    setToast({[m
+[31m-      active: true,[m
+[31m-      content: ok ? "Tracking link copied" : "Copy failed",[m
+[31m-    });[m
+[31m-  }[m
+[31m-[m
+[31m-  return ([m
+[31m-    <>[m
+[31m-      <Modal[m
+[31m-        open={open}[m
+[31m-        onClose={onClose}[m
+[31m-        title={title}[m
+[31m-        primaryAction={{[m
+[31m-          content: "Download QR",[m
+[31m-          onAction: downloadQr,[m
+[31m-          disabled: !dataUrl,[m
+[31m-        }}[m
+[31m-        secondaryActions={[[m
+[31m-          {[m
+[31m-            content: "Close",[m
+[31m-            onAction: onClose,[m
+[31m-          },[m
+[31m-        ]}[m
+[31m-      >[m
+[31m-        <Modal.Section>[m
+[31m-          <BlockStack gap="400">[m
+[31m-            <Text as="p" tone="subdued">[m
+[31m-              This QR code points to the campaign tracking link.[m
+[31m-            </Text>[m
+[31m-[m
+[31m-            <div[m
+[31m-              style={{[m
+[31m-                display: "flex",[m
+[31m-                justifyContent: "center",[m
+[31m-                padding: 16,[m
+[31m-                background: "#fff",[m
+[31m-                borderRadius: 12,[m
+[31m-              }}[m
+[31m-            >[m
+[31m-              {dataUrl ? ([m
+[31m-                <img[m
+[31m-                  src={dataUrl}[m
+[31m-                  alt={`${title} QR`}[m
+[31m-                  style={{[m
+[31m-                    width: 320,[m
+[31m-                    height: 320,[m
+[31m-                    objectFit: "contain",[m
+[31m-                  }}[m
+[31m-                />[m
+[31m-              ) : ([m
+[31m-                <Text as="p">QR could not be generated.</Text>[m
+[31m-              )}[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <InlineStack gap="200">[m
+[31m-              <Button onClick={copyLink} disabled={!value}>[m
+[31m-                Copy link[m
+[31m-              </Button>[m
+[31m-            </InlineStack>[m
+[31m-          </BlockStack>[m
+[31m-        </Modal.Section>[m
+[31m-      </Modal>[m
+[31m-[m
+[31m-      {toast.active ? ([m
+[31m-        <Toast[m
+[31m-          content={toast.content}[m
+[31m-          onDismiss={() => setToast((prev) => ({ ...prev, active: false }))}[m
+[31m-        />[m
+[31m-      ) : null}[m
+[31m-    </>[m
+[31m-  );[m
+[31m-}[m
+\ No newline at end of file[m
+[1mdiff --git a/app/components/CampaignQr.jsx b/app/components/CampaignQr.jsx[m
+[1mindex ac2f4aa..38c36a3 100644[m
+[1m--- a/app/components/CampaignQr.jsx[m
+[1m+++ b/app/components/CampaignQr.jsx[m
+[36m@@ -28,6 +28,16 @@[m [masync function safeCopy(text) {[m
+   }[m
+ }[m
+ [m
+[32m+[m[32mfunction sanitizeFileName(value) {[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    String(value || "campaign-qr")[m
+[32m+[m[32m      .trim()[m
+[32m+[m[32m      .toLowerCase()[m
+[32m+[m[32m      .replace(/[^a-z0-9]+/gi, "-")[m
+[32m+[m[32m      .replace(/^-+|-+$/g, "") || "campaign-qr"[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m
+[32m+[m
+ export default function CampaignQr({[m
+   open,[m
+   onClose,[m
+[36m@@ -50,8 +60,10 @@[m [mexport default function CampaignQr({[m
+           width: 320,[m
+           margin: 2,[m
+         });[m
+[32m+[m
+         if (active) setDataUrl(url);[m
+[31m-      } catch {[m
+[32m+[m[32m      } catch (error) {[m
+[32m+[m[32m        console.error("QR generation failed:", error);[m
+         if (active) setDataUrl("");[m
+       }[m
+     }[m
+[36m@@ -65,9 +77,10 @@[m [mexport default function CampaignQr({[m
+ [m
+   function downloadQr() {[m
+     if (!dataUrl) return;[m
+[32m+[m
+     const a = document.createElement("a");[m
+     a.href = dataUrl;[m
+[31m-    a.download = `${title.replace(/\s+/g, "-").toLowerCase()}-qr.png`;[m
+[32m+[m[32m    a.download = `${sanitizeFileName(title)}-qr.png`;[m
+     document.body.appendChild(a);[m
+     a.click();[m
+     document.body.removeChild(a);[m
+[36m@@ -109,7 +122,11 @@[m [mexport default function CampaignQr({[m
+               <img[m
+                 src={dataUrl}[m
+                 alt={`${title} QR`}[m
+[31m-                style={{ width: 320, height: 320, objectFit: "contain" }}[m
+[32m+[m[32m                style={{[m
+[32m+[m[32m                  width: 320,[m
+[32m+[m[32m                  height: 320,[m
+[32m+[m[32m                  objectFit: "contain",[m
+[32m+[m[32m                }}[m
+               />[m
+             ) : ([m
+               <Text as="p">QR could not be generated.</Text>[m
+[36m@@ -119,8 +136,9 @@[m [mexport default function CampaignQr({[m
+           <InlineStack gap="200">[m
+             <Button[m
+               onClick={async () => {[m
+[31m-                await safeCopy(value);[m
+[32m+[m[32m                await safeCopy(value || "");[m
+               }}[m
+[32m+[m[32m              disabled={!value}[m
+             >[m
+               Copy link[m
+             </Button>[m
+[1mdiff --git a/app/routes/app._index.jsx b/app/routes/app._index.jsx[m
+[1mindex 330559f..a5439a7 100644[m
+[1m--- a/app/routes/app._index.jsx[m
+[1m+++ b/app/routes/app._index.jsx[m
+[36m@@ -1,7 +1,7 @@[m
+ import { useEffect, useMemo, useState, useCallback } from "react";[m
+ import { useLocation } from "react-router";[m
+ [m
+[31m-import CampaignQr from "../CampaignQr.jsx";[m
+[32m+[m[32mimport CampaignQr from "../components/CampaignQr.jsx";[m
+ import {[m
+   Page,[m
+   Card,[m
+[1mdiff --git a/app/routes/app.campaigns.$id.jsx b/app/routes/app.campaigns.$id.jsx[m
+[1mindex 5be7b19..f5e87d1 100644[m
+[1m--- a/app/routes/app.campaigns.$id.jsx[m
+[1m+++ b/app/routes/app.campaigns.$id.jsx[m
+[36m@@ -2,7 +2,7 @@[m [mimport { useEffect, useState } from "react";[m
+ import { useLoaderData, useLocation } from "react-router";[m
+ import db from "../db.server";[m
+ import { authenticate } from "../shopify.server";[m
+[31m-import CampaignPerformanceChart from "../components/CampaignPerformanceChart";[m
+[32m+[m[32mimport CampaignPerformanceChart from "../components/CampaignPerformanceChart.jsx";[m
+ import {[m
+   Page,[m
+   Layout,[m
+[36m@@ -16,9 +16,6 @@[m [mimport {[m
+   Banner,[m
+ } from "@shopify/polaris";[m
+ [m
+[31m-const TRACK_BASE_URL =[m
+[31m-  process.env.TRACK_BASE_URL || "https://app.whatsells.dev";[m
+[31m-[m
+ function formatDateTime(value) {[m
+   if (!value) return "—";[m
+ [m
+[36m@@ -339,6 +336,11 @@[m [mfunction getMetricLabel(metric) {[m
+ [m
+ export async function loader({ request, params }) {[m
+   try {[m
+[32m+[m[32m    const trackBaseUrl =[m
+[32m+[m[32m      process.env.TRACK_BASE_URL ||[m
+[32m+[m[32m      process.env.SHOPIFY_APP_URL ||[m
+[32m+[m[32m      "https://whatsells.onrender.com";[m
+[32m+[m
+     const { session } = await authenticate.admin(request);[m
+     const shop = session.shop;[m
+     const id = String(params.id || "").trim();[m
+[36m@@ -485,7 +487,7 @@[m [mexport async function loader({ request, params }) {[m
+         roi,[m
+         roas,[m
+         breakEvenOrders,[m
+[31m-        goUrl: `${TRACK_BASE_URL}/go/${campaign.publicToken}`,[m
+[32m+[m[32m        goUrl: `${trackBaseUrl}/go/${campaign.publicToken}`,[m
+         ...ranking,[m
+       },[m
+       rangeStats: {[m
