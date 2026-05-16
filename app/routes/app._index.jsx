@@ -1,12 +1,4 @@
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-} from "recharts";
+import { useEffect, useState } from "react";
 
 function formatMoneyFromCents(cents) {
   const value = Number(cents || 0) / 100;
@@ -119,6 +111,27 @@ export default function CampaignPerformanceChart({
   bucket = "day",
 }) {
   const color = getChartColor(metric);
+  const [charts, setCharts] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (typeof window === "undefined") return;
+
+    import("recharts").then((mod) => {
+      if (active) setCharts(mod);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!charts) {
+    return <div style={{ width: "100%", height: 340 }} />;
+  }
+
+  const { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } = charts;
 
   return (
     <div style={{ width: "100%", height: 340 }}>
