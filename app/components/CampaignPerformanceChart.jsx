@@ -62,9 +62,18 @@ export default function CampaignPerformanceChart({
   metric = "clicks",
   color = "#22c55e",
 }) {
+  // Don't render chart if no data to prevent rendering errors
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ width: "100%", minHeight: 320, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "#6d7175" }}>No data available</p>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: "100%", height: 320 }}>
-      <ResponsiveContainer>
+    <div style={{ width: "100%", minHeight: 320 }}>
+      <ResponsiveContainer width="100%" height={320}>
         <LineChart data={data} margin={{ top: 16, right: 16, left: 4, bottom: 8 }}>
           <CartesianGrid stroke="#f1f2f4" vertical={false} />
           <XAxis

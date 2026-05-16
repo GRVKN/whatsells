@@ -10,7 +10,9 @@ export async function action({ request }) {
       payload,
     });
 
-    return new Response("ok", { status: 200 });
+    // This compliance route acknowledges Shopify compliance events.
+    // No additional customer PII is retained by this app beyond campaign attribution metrics.
+    return new Response("OK", { status: 200 });
   } catch (error) {
     console.error("Compliance webhook failed", error);
     return new Response("Unauthorized", { status: 401 });
