@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useLocation } from "react-router";
 
-import CampaignQr from "../CampaignQr.jsx";
+import CampaignQr from "../components/CampaignQr.jsx";
 import {
   Page,
   Card,
