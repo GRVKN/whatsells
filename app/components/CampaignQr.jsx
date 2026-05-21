@@ -42,14 +42,15 @@ export default function CampaignQr({
   open,
   onClose,
   value,
-  title = "Campaign QR",
+  title = "Campaign QR code",
 }) {
   const [dataUrl, setDataUrl] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
 
   useEffect(() => {
     let active = true;
 
-    async function generate() {
+    async function generateQrCode() {
       if (!open || !value) {
         if (active) setDataUrl("");
         return;
@@ -63,27 +64,36 @@ export default function CampaignQr({
 
         if (active) setDataUrl(url);
       } catch (error) {
-        console.error("QR generation failed:", error);
+        console.error("QR code generation failed:", error);
         if (active) setDataUrl("");
       }
     }
 
-    generate();
+    generateQrCode();
 
     return () => {
       active = false;
     };
   }, [open, value]);
 
-  function downloadQr() {
+  function downloadQrCode() {
     if (!dataUrl) return;
 
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = `${sanitizeFileName(title)}-qr.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = `${sanitizeFileName(title)}-qr-code.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  async function copyTrackingLink() {
+    const ok = await safeCopy(value || "");
+    setCopyStatus(ok ? "Tracking link copied." : "Could not copy link.");
+
+    window.setTimeout(() => {
+      setCopyStatus("");
+    }, 2500);
   }
 
   return (
@@ -92,8 +102,8 @@ export default function CampaignQr({
       onClose={onClose}
       title={title}
       primaryAction={{
-        content: "Download QR",
-        onAction: downloadQr,
+        content: "Download QR code",
+        onAction: downloadQrCode,
         disabled: !dataUrl,
       }}
       secondaryActions={[
@@ -105,9 +115,17 @@ export default function CampaignQr({
     >
       <Modal.Section>
         <BlockStack gap="400">
-          <Text as="p" tone="subdued">
-            This QR code points to the campaign tracking link.
-          </Text>
+          <BlockStack gap="100">
+            <Text as="p" tone="subdued">
+              Customers who scan this QR code will be redirected through your
+              WhatSells tracking link.
+            </Text>
+
+            <Text as="p" tone="subdued">
+              Use it on flyers, packaging inserts, printed cards or offline
+              campaigns.
+            </Text>
+          </BlockStack>
 
           <div
             style={{
@@ -121,7 +139,7 @@ export default function CampaignQr({
             {dataUrl ? (
               <img
                 src={dataUrl}
-                alt={`${title} QR`}
+                alt={`${title} QR code`}
                 style={{
                   width: 320,
                   height: 320,
@@ -129,20 +147,23 @@ export default function CampaignQr({
                 }}
               />
             ) : (
-              <Text as="p">QR could not be generated.</Text>
+              <Text as="p">QR code could not be generated.</Text>
             )}
           </div>
 
-          <InlineStack gap="200">
-            <Button
-              onClick={async () => {
-                await safeCopy(value || "");
-              }}
-              disabled={!value}
-            >
-              Copy link
-            </Button>
-          </InlineStack>
+          <BlockStack gap="200">
+            <InlineStack gap="200">
+              <Button onClick={copyTrackingLink} disabled={!value}>
+                Copy tracking link
+              </Button>
+            </InlineStack>
+
+            {copyStatus ? (
+              <Text as="p" tone="subdued">
+                {copyStatus}
+              </Text>
+            ) : null}
+          </BlockStack>
         </BlockStack>
       </Modal.Section>
     </Modal>

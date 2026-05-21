@@ -15,26 +15,15 @@ import {
   InlineStack,
   BlockStack,
   Toast,
+  Frame,
 } from "@shopify/polaris";
 
-
 // ----------------------
-// helpers
+// Helpers
 // ----------------------
-function formatDateTime(value) {
-  if (!value) return "";
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(value));
-  } catch {
-    return "";
-  }
-}
-
 function formatMoneyFromCents(cents) {
   const value = Number(cents || 0) / 100;
+
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
@@ -45,17 +34,11 @@ function formatPercent(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return "—";
   }
+
   return `${(Number(value) * 100).toFixed(1)}%`;
 }
 
-function formatRatio(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "—";
-  }
-  return `${Number(value).toFixed(2)}x`;
-}
-
-function shorten(text, max = 55) {
+function shorten(text, max = 45) {
   if (!text) return "";
   return text.length > max ? `${text.slice(0, max - 3)}...` : text;
 }
@@ -103,13 +86,18 @@ function numberOrNull(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function getProfitCents(campaign) {
+  if (campaign?.profitCents !== null && campaign?.profitCents !== undefined) {
+    return numberOrZero(campaign.profitCents);
+  }
+
+  return numberOrZero(campaign?.revenueCents) - numberOrZero(campaign?.costCents);
+}
+
 function getCampaignPerformance(campaign) {
   const costCents = numberOrZero(campaign?.costCents);
   const revenueCents = numberOrZero(campaign?.revenueCents);
-  const profitCents =
-    campaign?.profitCents !== null && campaign?.profitCents !== undefined
-      ? numberOrZero(campaign.profitCents)
-      : revenueCents - costCents;
+  const profitCents = getProfitCents(campaign);
 
   const clicks7d = numberOrZero(campaign?.clicks7d);
   const clicks30d = numberOrZero(campaign?.clicks30d);
@@ -121,17 +109,19 @@ function getCampaignPerformance(campaign) {
   const conversionRate = numberOrNull(campaign?.conversionRate);
 
   return {
-    profitCents,
-    roi: roi ?? 0,
-    revenueCents,
-    orders,
-    conversionRate: conversionRate ?? 0,
-    roas: roas ?? 0,
-    clicks30d,
-    clicks7d,
-    clicksTotal,
     costCents,
-    createdAtMs: campaign?.createdAt ? new Date(campaign.createdAt).getTime() : 0,
+    revenueCents,
+    profitCents,
+    clicks7d,
+    clicks30d,
+    clicksTotal,
+    orders,
+    roi: roi ?? 0,
+    roas: roas ?? 0,
+    conversionRate: conversionRate ?? 0,
+    createdAtMs: campaign?.createdAt
+      ? new Date(campaign.createdAt).getTime()
+      : 0,
   };
 }
 
@@ -148,7 +138,7 @@ function hasCampaignSignal(campaign) {
   );
 }
 
-function compareBestCampaigns(a, b) {
+function compareTopCampaigns(a, b) {
   const pa = getCampaignPerformance(a);
   const pb = getCampaignPerformance(b);
 
@@ -168,7 +158,7 @@ function compareBestCampaigns(a, b) {
   return checks.find((value) => value !== 0) || 0;
 }
 
-function compareWorstCampaigns(a, b) {
+function compareCampaignsNeedingAttention(a, b) {
   const pa = getCampaignPerformance(a);
   const pb = getCampaignPerformance(b);
 
@@ -189,7 +179,83 @@ function compareWorstCampaigns(a, b) {
 }
 
 // ----------------------
-// component
+// Small UI blocks
+// ----------------------
+function MetricCard({ label, value, helpText }) {
+  return (
+    <div style={{ minWidth: 170, flex: 1 }}>
+      <Card>
+        <BlockStack gap="100">
+          <Text as="p" tone="subdued">
+            {label}
+          </Text>
+
+          <Text variant="headingLg" as="p">
+            {value}
+          </Text>
+
+          {helpText ? (
+            <Text as="p" tone="subdued">
+              {helpText}
+            </Text>
+          ) : null}
+        </BlockStack>
+      </Card>
+    </div>
+  );
+}
+
+function CampaignHighlightCard({ title, campaign, emptyText }) {
+  if (!campaign) {
+    return (
+      <div style={{ minWidth: 260, flex: 1 }}>
+        <Card>
+          <BlockStack gap="150">
+            <Text variant="headingSm" as="h3">
+              {title}
+            </Text>
+
+            <Text as="p" tone="subdued">
+              {emptyText}
+            </Text>
+          </BlockStack>
+        </Card>
+      </div>
+    );
+  }
+
+  const profitCents = getProfitCents(campaign);
+
+  return (
+    <div style={{ minWidth: 260, flex: 1 }}>
+      <Card>
+        <BlockStack gap="150">
+          <Text variant="headingSm" as="h3">
+            {title}
+          </Text>
+
+          <Text variant="headingMd" as="p">
+            {campaign.name}
+          </Text>
+
+          <Text as="p" tone="subdued">
+            Profit: {formatMoneyFromCents(profitCents)} · ROI:{" "}
+            {formatPercent(campaign.roi)}
+          </Text>
+
+          <Text as="p" tone="subdued">
+            Revenue: {formatMoneyFromCents(campaign.revenueCents || 0)} ·
+            Orders: {campaign.ordersCount ?? 0} · Clicks:{" "}
+            {campaign.clicksCount ?? 0}
+          </Text>
+        </BlockStack>
+      </Card>
+    </div>
+  );
+}
+
+// ----------------------
+// Component
 // ----------------------
 export default function AppIndex() {
   const location = useLocation();
@@ -224,8 +290,8 @@ export default function AppIndex() {
 
   const sourceOptions = useMemo(
     () => [
-      { label: "QR", value: "qr" },
-      { label: "Link", value: "link" },
+      { label: "QR code", value: "qr" },
+      { label: "Tracking link", value: "link" },
       { label: "Packaging", value: "packaging" },
       { label: "Flyer", value: "flyer" },
       { label: "Influencer", value: "influencer" },
@@ -236,29 +302,66 @@ export default function AppIndex() {
 
   const sourceLabelByValue = useMemo(() => {
     const map = {};
+
     for (const option of sourceOptions) {
       map[option.value] = option.label;
     }
+
     return map;
   }, [sourceOptions]);
 
-const rankedCampaigns = useMemo(() => {
-  return campaigns.filter((campaign) => {
-    return campaign?.id && hasCampaignSignal(campaign);
-  });
-}, [campaigns]);
+  const rankedCampaigns = useMemo(() => {
+    return campaigns.filter((campaign) => {
+      return campaign?.id && hasCampaignSignal(campaign);
+    });
+  }, [campaigns]);
 
-const bestCampaign = useMemo(() => {
-  if (!rankedCampaigns.length) return null;
+  const topCampaign = useMemo(() => {
+    if (!rankedCampaigns.length) return null;
 
-  return [...rankedCampaigns].sort(compareBestCampaigns)[0];
-}, [rankedCampaigns]);
+    return [...rankedCampaigns].sort(compareTopCampaigns)[0];
+  }, [rankedCampaigns]);
 
-const worstCampaign = useMemo(() => {
-  if (!rankedCampaigns.length) return null;
+  const attentionCampaign = useMemo(() => {
+    if (!rankedCampaigns.length) return null;
 
-  return [...rankedCampaigns].sort(compareWorstCampaigns)[0];
-}, [rankedCampaigns]);
+    return [...rankedCampaigns].sort(compareCampaignsNeedingAttention)[0];
+  }, [rankedCampaigns]);
+
+  const overview = useMemo(() => {
+    const totals = campaigns.reduce(
+      (sum, campaign) => {
+        const revenueCents = numberOrZero(campaign?.revenueCents);
+        const costCents = numberOrZero(campaign?.costCents);
+        const profitCents = getProfitCents(campaign);
+        const orders = numberOrZero(campaign?.ordersCount);
+        const clicks = numberOrZero(campaign?.clicksCount);
+
+        return {
+          revenueCents: sum.revenueCents + revenueCents,
+          costCents: sum.costCents + costCents,
+          profitCents: sum.profitCents + profitCents,
+          orders: sum.orders + orders,
+          clicks: sum.clicks + clicks,
+        };
+      },
+      {
+        revenueCents: 0,
+        costCents: 0,
+        profitCents: 0,
+        orders: 0,
+        clicks: 0,
+      },
+    );
+
+    return {
+      ...totals,
+      roi:
+        totals.costCents > 0 ? totals.profitCents / totals.costCents : null,
+      conversionRate:
+        totals.clicks > 0 ? totals.orders / totals.clicks : null,
+    };
+  }, [campaigns]);
 
   const resetForm = useCallback(() => {
     setName("");
@@ -330,7 +433,16 @@ const worstCampaign = useMemo(() => {
     } finally {
       setLoading(false);
     }
-  }, [name, sourceType, targetUrl, cost, notes, resetForm, loadCampaigns, showToast]);
+  }, [
+    name,
+    sourceType,
+    targetUrl,
+    cost,
+    notes,
+    resetForm,
+    loadCampaigns,
+    showToast,
+  ]);
 
   const deleteCampaign = useCallback(
     async (campaignId, campaignName) => {
@@ -371,262 +483,312 @@ const worstCampaign = useMemo(() => {
     loadCampaigns();
   }, [loadCampaigns]);
 
-const rows = useMemo(() => {
-  return campaigns.map((campaign) => {
-    const token = campaign?.publicToken || "";
-    const goUrl = token ? buildGoUrl(token) : "";
-    const target = campaign?.targetUrl || "";
+  const rows = useMemo(() => {
+    return campaigns.map((campaign) => {
+      const token = campaign?.publicToken || "";
+      const goUrl = token ? buildGoUrl(token) : "";
+      const profitCents = getProfitCents(campaign);
 
       return [
-        campaign?.name || "",
-        sourceLabelByValue[campaign?.sourceType] || campaign?.sourceType || "",
-        campaign?.clicks7d ?? 0,
-        campaign?.clicks30d ?? 0,
+        <BlockStack gap="050" key={`${campaign.id}-campaign`}>
+          <Text as="span" fontWeight="semibold">
+            {campaign?.name || "Untitled campaign"}
+          </Text>
+
+          {campaign?.targetUrl ? (
+            <Text as="span" tone="subdued">
+              {shorten(campaign.targetUrl, 52)}
+            </Text>
+          ) : (
+            <Text as="span" tone="subdued">
+              No destination URL yet
+            </Text>
+          )}
+        </BlockStack>,
+
+        sourceLabelByValue[campaign?.sourceType] || campaign?.sourceType || "—",
+
         campaign?.clicksCount ?? 0,
+
         campaign?.ordersCount ?? 0,
-        formatPercent(campaign?.conversionRate),
+
         formatMoneyFromCents(campaign?.revenueCents || 0),
-        formatMoneyFromCents(campaign?.costCents || 0),
-        formatMoneyFromCents(campaign?.profitCents || 0),
+
+        formatMoneyFromCents(profitCents),
+
         formatPercent(campaign?.roi),
-        formatRatio(campaign?.roas),
-        campaign?.breakEvenOrders ?? "—",
-        shorten(target, 60),
-        formatDateTime(campaign?.createdAt),
-      goUrl ? (
-<InlineStack gap="200" wrap={false}>
-  <Button
-    size="slim"
-    onClick={async () => {
-      const ok = await safeCopy(goUrl);
-      showToast(ok ? "Go link copied" : "Copy failed");
-    }}
-  >
-    Copy
-  </Button>
 
-<Link to={`/app/campaigns/${campaign.id}${embeddedQuery}`}>
-    <Button size="slim" variant="secondary">
-      Details
-    </Button>
-  </Link>
+        goUrl ? (
+          <InlineStack gap="200" wrap={false}>
+            <Button
+              size="slim"
+              onClick={async () => {
+                const ok = await safeCopy(goUrl);
+                showToast(ok ? "Tracking link copied" : "Copy failed");
+              }}
+            >
+              Copy link
+            </Button>
 
-  <Button
-    size="slim"
-    onClick={() => {
-      setQrValue(goUrl);
-      setQrTitle(campaign?.name || "Campaign");
-      setQrOpen(true);
-    }}
-  >
-    Show QR
-  </Button>
-</InlineStack>
-      ) : (
-        ""
-      ),
-      <Button
-        size="slim"
-        tone="critical"
-        onClick={() => deleteCampaign(campaign.id, campaign.name)}
-      >
-        Delete
-      </Button>,
-    ];
-  });
-}, [campaigns, sourceLabelByValue, showToast, deleteCampaign, embeddedQuery]);
+            <Link
+              to={`/app/campaigns/${campaign.id}${embeddedQuery}`}
+              style={{ textDecoration: "none" }}
+            >
+              <Button size="slim" variant="secondary">
+                Details
+              </Button>
+            </Link>
+
+            <Button
+              size="slim"
+              onClick={() => {
+                setQrValue(goUrl);
+                setQrTitle(campaign?.name || "Campaign");
+                setQrOpen(true);
+              }}
+            >
+              QR code
+            </Button>
+
+            <Button
+              size="slim"
+              tone="critical"
+              onClick={() => deleteCampaign(campaign.id, campaign.name)}
+            >
+              Delete
+            </Button>
+          </InlineStack>
+        ) : (
+          "—"
+        ),
+      ];
+    });
+  }, [
+    campaigns,
+    sourceLabelByValue,
+    showToast,
+    deleteCampaign,
+    embeddedQuery,
+  ]);
 
   return (
-    <>
-      <Page title="WhatSells">
+    <Frame>
+      <Page
+        title="WhatSells"
+        subtitle="Campaign tracking for Shopify"
+      >
         <Layout>
           <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack gap="400" align="space-between">
+            <BlockStack gap="400">
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack gap="400" align="space-between">
+                    <BlockStack gap="100">
+                      <Text variant="headingMd" as="h2">
+                        Dashboard
+                      </Text>
+
+                      <Text as="p" tone="subdued">
+                        See which campaign links create clicks, orders and
+                        revenue.
+                      </Text>
+                    </BlockStack>
+
+                    <Button onClick={loadCampaigns} loading={loading}>
+                      Refresh data
+                    </Button>
+                  </InlineStack>
+
+                  {err ? (
+                    <Banner tone="critical" onDismiss={() => setErr("")}>
+                      {err}
+                    </Banner>
+                  ) : null}
+
+                  <InlineStack gap="300" wrap>
+                    <MetricCard
+                      label="Revenue"
+                      value={formatMoneyFromCents(overview.revenueCents)}
+                      helpText="Tracked revenue"
+                    />
+
+                    <MetricCard
+                      label="Orders"
+                      value={String(overview.orders)}
+                      helpText="Attributed orders"
+                    />
+
+                    <MetricCard
+                      label="Profit"
+                      value={formatMoneyFromCents(overview.profitCents)}
+                      helpText="Revenue minus cost"
+                    />
+
+                    <MetricCard
+                      label="ROI"
+                      value={formatPercent(overview.roi)}
+                      helpText="Profit divided by cost"
+                    />
+                  </InlineStack>
+
+                  <InlineStack gap="300" wrap>
+                    <CampaignHighlightCard
+                      title="Top campaign"
+                      campaign={topCampaign}
+                      emptyText="No campaign performance data yet."
+                    />
+
+                    <CampaignHighlightCard
+                      title="Needs attention"
+                      campaign={attentionCampaign}
+                      emptyText="No campaign needs attention yet."
+                    />
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="400">
+                  <BlockStack gap="100">
+                    <Text variant="headingMd" as="h2">
+                      Create campaign
+                    </Text>
+
+                    <Text as="p" tone="subdued">
+                      Create a tracking link or QR campaign and send visitors to
+                      your Shopify product page.
+                    </Text>
+                  </BlockStack>
+
+                  <InlineStack gap="300" wrap align="start">
+                    <div style={{ minWidth: 260, flex: 1 }}>
+                      <TextField
+                        label="Campaign name"
+                        value={name}
+                        onChange={setName}
+                        autoComplete="off"
+                        placeholder="e.g. TikTok creator, flyer drop, packaging insert"
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 210 }}>
+                      <Select
+                        label="Campaign type"
+                        options={sourceOptions}
+                        value={sourceType}
+                        onChange={setSourceType}
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 340, flex: 1 }}>
+                      <TextField
+                        label="Destination URL"
+                        value={targetUrl}
+                        onChange={setTargetUrl}
+                        autoComplete="off"
+                        placeholder="https://your-shop.com/products/..."
+                        helpText="Where visitors go after clicking this tracking link."
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 180 }}>
+                      <TextField
+                        label="Campaign cost (€)"
+                        value={cost}
+                        onChange={setCost}
+                        autoComplete="off"
+                        placeholder="e.g. 250"
+                        helpText="Optional. Used for profit and ROI."
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 280, flex: 1 }}>
+                      <TextField
+                        label="Notes"
+                        value={notes}
+                        onChange={setNotes}
+                        autoComplete="off"
+                        placeholder="e.g. 300 packaging inserts or creator deal"
+                      />
+                    </div>
+
+                    <div style={{ alignSelf: "end" }}>
+                      <Button
+                        variant="primary"
+                        onClick={createCampaign}
+                        loading={loading}
+                        disabled={!name.trim()}
+                      >
+                        Create campaign
+                      </Button>
+                    </div>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between" gap="300">
+                    <BlockStack gap="100">
+                      <Text variant="headingMd" as="h2">
+                        Campaigns
+                      </Text>
+
+                      <Text as="p" tone="subdued">
+                        Compare clicks, orders, revenue and ROI. Open details
+                        for deeper performance data.
+                      </Text>
+                    </BlockStack>
+                  </InlineStack>
+
+                  {campaigns.length ? (
+                    <DataTable
+                      columnContentTypes={[
+                        "text",
+                        "text",
+                        "numeric",
+                        "numeric",
+                        "text",
+                        "text",
+                        "text",
+                        "text",
+                      ]}
+                      headings={[
+                        "Campaign",
+                        "Type",
+                        "Clicks",
+                        "Orders",
+                        "Revenue",
+                        "Profit",
+                        "ROI",
+                        "Actions",
+                      ]}
+                      rows={rows}
+                    />
+                  ) : (
+                    <Banner tone="info">
+                      No campaigns yet. Create your first campaign to generate a
+                      tracking link and QR code.
+                    </Banner>
+                  )}
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="200">
                   <Text variant="headingMd" as="h2">
-                    Campaigns
+                    Order tracking status
                   </Text>
 
-                  <Button onClick={loadCampaigns} loading={loading}>
-                    Update live
-                  </Button>
-                </InlineStack>
-
-                {err ? (
-                  <Banner tone="critical" onDismiss={() => setErr("")}>
-                    {err}
-                  </Banner>
-                ) : null}
-
-                                <InlineStack gap="300" wrap>
-                  <div style={{ minWidth: 260, flex: 1 }}>
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text variant="headingSm" as="h3">
-                          Best campaign
-                        </Text>
-                        {bestCampaign ? (
-                          <>
-                            <Text as="p">{bestCampaign.name}</Text>
-<Text as="p" tone="subdued">
-  Profit: {formatMoneyFromCents(bestCampaign.profitCents || 0)} · ROI:{" "}
-  {formatPercent(bestCampaign.roi)}
-</Text>
-
-<Text as="p" tone="subdued">
-  Revenue: {formatMoneyFromCents(bestCampaign.revenueCents || 0)} · Orders:{" "}
-  {bestCampaign.ordersCount ?? 0} · Clicks: {bestCampaign.clicksCount ?? 0}
-</Text>
-                          </>
-                        ) : (
-                          <Text as="p" tone="subdued">
-                            No ROI data yet.
-                          </Text>
-                        )}
-                      </BlockStack>
-                    </Card>
-                  </div>
-
-                  <div style={{ minWidth: 260, flex: 1 }}>
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text variant="headingSm" as="h3">
-                          Worst campaign
-                        </Text>
-                        {worstCampaign ? (
-                          <>
-                            <Text as="p">{worstCampaign.name}</Text>
-<Text as="p" tone="subdued">
-  Profit: {formatMoneyFromCents(worstCampaign.profitCents || 0)} · ROI:{" "}
-  {formatPercent(worstCampaign.roi)}
-</Text>
-
-<Text as="p" tone="subdued">
-  Revenue: {formatMoneyFromCents(worstCampaign.revenueCents || 0)} · Orders:{" "}
-  {worstCampaign.ordersCount ?? 0} · Clicks: {worstCampaign.clicksCount ?? 0}
-</Text>
-                          </>
-                        ) : (
-                          <Text as="p" tone="subdued">
-                            No ROI data yet.
-                          </Text>
-                        )}
-                      </BlockStack>
-                    </Card>
-                  </div>
-                </InlineStack>
-
-                <InlineStack gap="300" wrap align="start">
-                  <div style={{ minWidth: 260, flex: 1 }}>
-                    <TextField
-                      label="Campaign name"
-                      value={name}
-                      onChange={setName}
-                      autoComplete="off"
-                      placeholder="e.g. Packaging insert, Spring flyer, TikTok creator..."
-                    />
-                  </div>
-
-                  <div style={{ minWidth: 200 }}>
-                    <Select
-                      label="Source"
-                      options={sourceOptions}
-                      value={sourceType}
-                      onChange={setSourceType}
-                    />
-                  </div>
-
-                  <div style={{ minWidth: 340, flex: 1 }}>
-                    <TextField
-                      label="Target URL"
-                      value={targetUrl}
-                      onChange={setTargetUrl}
-                      autoComplete="off"
-                      placeholder="https://your-shop.com/products/..."
-                      helpText="Destination page for this campaign. WhatSells tracks the go link and redirects visitors here."
-                    />
-                  </div>
-
-                  <div style={{ minWidth: 160 }}>
-                    <TextField
-                      label="Cost (€)"
-                      value={cost}
-                      onChange={setCost}
-                      autoComplete="off"
-                      placeholder="e.g. 250"
-                    />
-                  </div>
-
-                  <div style={{ minWidth: 280, flex: 1 }}>
-                    <TextField
-                      label="Notes (optional)"
-                      value={notes}
-                      onChange={setNotes}
-                      autoComplete="off"
-                      placeholder="e.g. 300 packaging inserts / creator deal / local flyer drop"
-                    />
-                  </div>
-
-                  <div style={{ alignSelf: "end" }}>
-                    <Button
-                      variant="primary"
-                      onClick={createCampaign}
-                      loading={loading}
-                      disabled={!name.trim()}
-                    >
-                       Save campaign
-                    </Button>
-                  </div>
-                </InlineStack>
-
-<DataTable
-  columnContentTypes={[
-    "text",
-    "text",
-    "numeric",
-    "numeric",
-    "numeric",
-    "numeric",
-    "text",
-    "text",
-    "text",
-    "text",
-    "text",
-    "text",
-    "numeric",
-    "text",
-    "text",
-    "text",
-    "text",
-  ]}
-  headings={[
-    "Name",
-    "Source",
-    "Clicks 7d",
-    "Clicks 30d",
-    "Clicks total",
-    "Orders",
-    "Conversion",
-    "Revenue",
-    "Cost",
-    "Profit",
-    "ROI",
-    "ROAS",
-    "Break-even orders",
-    "Target URL",
-    "Created",
-    "Go Link",
-    "Actions",
-  ]}
-  rows={rows}
-/>
-
-<Text variant="bodySm" as="p" tone="subdued">
-  Clicks 7d and 30d show recent activity. Clicks total, ROI, ROAS and break-even orders show long-term campaign performance.
-</Text>
-              </BlockStack>
-            </Card>
+                  <Text as="p" tone="subdued">
+                    Orders are attributed when a customer completes checkout
+                    after visiting your store through a WhatSells tracking link.
+                    Open campaign details to view attributed orders and recent
+                    tracking events.
+                  </Text>
+                </BlockStack>
+              </Card>
+            </BlockStack>
           </Layout.Section>
         </Layout>
       </Page>
@@ -641,6 +803,6 @@ const rows = useMemo(() => {
         value={qrValue}
         title={qrTitle}
       />
-    </>
+    </Frame>
   );
 }

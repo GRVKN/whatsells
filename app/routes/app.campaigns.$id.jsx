@@ -16,6 +16,9 @@ import {
   Banner,
 } from "@shopify/polaris";
 
+// ----------------------
+// Formatting helpers
+// ----------------------
 function formatDateTime(value) {
   if (!value) return "—";
 
@@ -59,6 +62,33 @@ function numberOrZero(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
+async function safeCopy(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+
+  try {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.setAttribute("readonly", "");
+    el.style.position = "absolute";
+    el.style.left = "-9999px";
+    document.body.appendChild(el);
+    el.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(el);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// ----------------------
+// Metric helpers
+// ----------------------
 function calcProfit(costCents, revenueCents) {
   return numberOrZero(revenueCents) - numberOrZero(costCents);
 }
@@ -105,6 +135,9 @@ function calcBreakEvenOrders(costCents, avgOrderValueCents) {
   return Math.ceil(cost / avgOrder);
 }
 
+// ----------------------
+// Range helpers
+// ----------------------
 function normalizeRange(value) {
   if (
     value === "live" ||
@@ -207,6 +240,9 @@ function buildRangeUrl(campaignId, range, currentSearch = "") {
   return `/app/campaigns/${campaignId}?${params.toString()}`;
 }
 
+// ----------------------
+// Ranking helpers
+// ----------------------
 function hasPerformanceSignal(campaign) {
   return (
     numberOrZero(campaign.costCents) > 0 ||
@@ -256,23 +292,23 @@ function getCampaignRanking(allCampaigns, currentCampaignId) {
     ? calcProfit(current.costCents, current.revenueCents)
     : 0;
 
-  const isBestCampaign =
+  const isTopCampaign =
     rank === 1 && totalRankedCampaigns > 0 && currentProfit > 0;
 
   const isTopRanked =
     rank === 1 && totalRankedCampaigns > 0 && currentProfit <= 0;
 
-  const isWorstCampaign =
+  const needsAttention =
     rank === totalRankedCampaigns && totalRankedCampaigns > 1;
 
-  let performanceLabel = "Needs data";
+  let performanceLabel = "Waiting for data";
 
-  if (isBestCampaign) {
-    performanceLabel = "Best campaign";
+  if (isTopCampaign) {
+    performanceLabel = "Top campaign";
   } else if (isTopRanked) {
     performanceLabel = "Top ranked";
-  } else if (isWorstCampaign) {
-    performanceLabel = "Worst campaign";
+  } else if (needsAttention) {
+    performanceLabel = "Needs attention";
   } else if (rank) {
     performanceLabel = `Rank #${rank}`;
   }
@@ -280,13 +316,16 @@ function getCampaignRanking(allCampaigns, currentCampaignId) {
   return {
     rank,
     totalRankedCampaigns,
-    isBestCampaign,
+    isTopCampaign,
     isTopRanked,
-    isWorstCampaign,
+    needsAttention,
     performanceLabel,
   };
 }
 
+// ----------------------
+// Chart helpers
+// ----------------------
 function buildChartRows(events, bucket, campaignCostCents) {
   const map = new Map();
 
@@ -334,12 +373,15 @@ function getMetricLabel(metric) {
   return "Clicks";
 }
 
+// ----------------------
+// Loader
+// ----------------------
 export async function loader({ request, params }) {
   try {
     const trackBaseUrl =
       process.env.TRACK_BASE_URL ||
       process.env.SHOPIFY_APP_URL ||
-      "https://whatsells.onrender.com";
+      "https://app.whatsells.dev";
 
     const { session } = await authenticate.admin(request);
     const shop = session.shop;
@@ -383,7 +425,13 @@ export async function loader({ request, params }) {
       ...(rangeStart ? { createdAt: { gte: rangeStart } } : {}),
     };
 
-    const [events, allCampaigns, clicks7d, clicks30d] = await Promise.all([
+    const [
+      events,
+      attributedOrders,
+      allCampaigns,
+      clicks7d,
+      clicks30d,
+    ] = await Promise.all([
       db.event.findMany({
         where: eventWhere,
         orderBy: { createdAt: "asc" },
@@ -397,6 +445,22 @@ export async function loader({ request, params }) {
           valueCents: true,
           currency: true,
           orderId: true,
+        },
+      }),
+
+      db.event.findMany({
+        where: {
+          campaignId: campaign.id,
+          type: "purchase",
+        },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          createdAt: true,
+          orderId: true,
+          valueCents: true,
+          currency: true,
         },
       }),
 
@@ -466,11 +530,7 @@ export async function loader({ request, params }) {
 
     const ranking = getCampaignRanking(allCampaigns, campaign.id);
 
-    const chartRows = buildChartRows(
-      events,
-      bucket,
-      campaign.costCents,
-    );
+    const chartRows = buildChartRows(events, bucket, campaign.costCents);
 
     return {
       loadError: null,
@@ -500,6 +560,7 @@ export async function loader({ request, params }) {
         roas: rangeRoas,
       },
       chartRows,
+      attributedOrders,
       recentEvents: [...events].reverse().slice(0, 30),
     };
   } catch (error) {
@@ -510,25 +571,28 @@ export async function loader({ request, params }) {
     console.error("Campaign details loader failed:", error);
 
     return {
-      loadError:
-        error?.message || "Campaign details could not be loaded.",
+      loadError: error?.message || "Campaign details could not be loaded.",
       range: "30d",
       rangeLabel: "Last 30 days",
       bucket: "day",
       campaign: null,
       rangeStats: null,
       chartRows: [],
+      attributedOrders: [],
       recentEvents: [],
     };
   }
 }
 
+// ----------------------
+// Small UI components
+// ----------------------
 function KpiCard({ label, value, helpText }) {
   return (
     <div style={{ minWidth: 170, flex: 1 }}>
       <Card>
         <BlockStack gap="100">
-          <Text variant="headingSm" as="h3">
+          <Text as="p" tone="subdued">
             {label}
           </Text>
 
@@ -549,10 +613,7 @@ function KpiCard({ label, value, helpText }) {
 
 function MetricButton({ active, children, onClick }) {
   return (
-    <Button
-      variant={active ? "primary" : "secondary"}
-      onClick={onClick}
-    >
+    <Button variant={active ? "primary" : "secondary"} onClick={onClick}>
       {children}
     </Button>
   );
@@ -564,6 +625,11 @@ function ChartTable({ rows }) {
       <BlockStack gap="300">
         <Text variant="headingMd" as="h2">
           Performance by period
+        </Text>
+
+        <Text as="p" tone="subdued">
+          A simple breakdown of clicks, orders, revenue and profit for the
+          selected time range.
         </Text>
 
         <DataTable
@@ -586,6 +652,9 @@ function ChartTable({ rows }) {
   );
 }
 
+// ----------------------
+// Component
+// ----------------------
 export default function CampaignDetails() {
   const location = useLocation();
 
@@ -597,10 +666,12 @@ export default function CampaignDetails() {
     bucket,
     rangeStats,
     chartRows,
+    attributedOrders,
     recentEvents,
   } = useLoaderData();
 
   const [metric, setMetric] = useState("clicks");
+  const [copyStatus, setCopyStatus] = useState("");
 
   useEffect(() => {
     if (range !== "live") return;
@@ -616,7 +687,7 @@ export default function CampaignDetails() {
     return (
       <Page
         title="Campaign details"
-        backAction={{ content: "Campaigns", url: "/app" }}
+        backAction={{ content: "Dashboard", url: "/app" }}
       >
         <Layout>
           <Layout.Section>
@@ -629,35 +700,51 @@ export default function CampaignDetails() {
     );
   }
 
+  const attributedOrderRows = attributedOrders.map((event) => [
+    formatDateTime(event.createdAt),
+    event.orderId || "—",
+    event.valueCents != null ? formatMoneyFromCents(event.valueCents) : "—",
+    event.currency || "—",
+  ]);
+
   const eventRows = recentEvents.map((event) => [
     formatDateTime(event.createdAt),
-    event.type,
+    event.type === "purchase" ? "order" : event.type,
     event.referer || "—",
     event.lang || "—",
     event.orderId || "—",
     event.valueCents != null ? formatMoneyFromCents(event.valueCents) : "—",
   ]);
 
-  const rankingTone = campaign.isBestCampaign
+  const rankingTone = campaign.isTopCampaign
     ? "success"
-    : campaign.isWorstCampaign
-      ? "critical"
-      : "attention";
+    : campaign.needsAttention
+      ? "attention"
+      : "info";
+
+  async function copyTrackingLink() {
+    const ok = await safeCopy(campaign.goUrl);
+    setCopyStatus(ok ? "Tracking link copied." : "Could not copy link.");
+
+    window.setTimeout(() => {
+      setCopyStatus("");
+    }, 2500);
+  }
 
   return (
     <Page
       title={campaign.name}
-      subtitle={`Campaign details · ${campaign.sourceType}`}
-      backAction={{ content: "Campaigns", url: "/app" }}
+      subtitle={`Tracking performance · ${campaign.sourceType}`}
+      backAction={{ content: "Dashboard", url: "/app" }}
     >
       <Layout>
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
-              <InlineStack align="space-between" gap="400">
+              <InlineStack align="space-between" gap="400" wrap>
                 <BlockStack gap="150">
                   <Text as="p" tone="subdued">
-                    Shop: {campaign.shop}
+                    Shopify store: {campaign.shop}
                   </Text>
 
                   <Text variant="headingLg" as="h1">
@@ -667,22 +754,16 @@ export default function CampaignDetails() {
                   <InlineStack gap="200">
                     <Badge
                       tone={
-                        campaign.status === "active"
-                          ? "success"
-                          : "attention"
+                        campaign.status === "active" ? "success" : "attention"
                       }
                     >
                       {campaign.status}
                     </Badge>
 
                     <Badge>{campaign.sourceType}</Badge>
-                  </InlineStack>
-                </BlockStack>
 
-                <BlockStack gap="150">
-                  <Badge tone={rankingTone}>
-                    {campaign.performanceLabel}
-                  </Badge>
+                    <Badge tone={rankingTone}>{campaign.performanceLabel}</Badge>
+                  </InlineStack>
 
                   {campaign.rank ? (
                     <Text as="p" tone="subdued">
@@ -690,15 +771,43 @@ export default function CampaignDetails() {
                     </Text>
                   ) : (
                     <Text as="p" tone="subdued">
-                      Not enough data to rank.
+                      Waiting for more data before ranking this campaign.
                     </Text>
                   )}
+                </BlockStack>
 
+                <BlockStack gap="150">
                   <Button url={campaign.goUrl} external>
-                    Open live link
+                    Open tracking link
                   </Button>
+
+                  <Button onClick={copyTrackingLink}>
+                    Copy tracking link
+                  </Button>
+
+                  {copyStatus ? (
+                    <Text as="p" tone="subdued">
+                      {copyStatus}
+                    </Text>
+                  ) : null}
                 </BlockStack>
               </InlineStack>
+
+              <Card>
+                <BlockStack gap="200">
+                  <Text variant="headingSm" as="h3">
+                    Tracking link
+                  </Text>
+
+                  <Text as="p" tone="subdued">
+                    Customers who open this link are redirected to your
+                    destination URL. WhatSells uses the link to attribute clicks
+                    and orders to this campaign.
+                  </Text>
+
+                  <Text as="p">{campaign.goUrl}</Text>
+                </BlockStack>
+              </Card>
 
               <InlineStack gap="200" wrap>
                 <Button
@@ -762,7 +871,7 @@ export default function CampaignDetails() {
             <KpiCard
               label="Conversion"
               value={formatPercent(rangeStats.conversionRate)}
-              helpText="Orders / Clicks"
+              helpText="Orders divided by clicks"
             />
 
             <KpiCard
@@ -774,19 +883,19 @@ export default function CampaignDetails() {
             <KpiCard
               label="Profit"
               value={formatMoneyFromCents(rangeStats.profitCents)}
-              helpText="Revenue - Campaign cost"
+              helpText="Revenue minus campaign cost"
             />
 
             <KpiCard
               label="ROI"
               value={formatPercent(rangeStats.roi)}
-              helpText="Profit / Cost"
+              helpText="Profit divided by cost"
             />
 
             <KpiCard
               label="ROAS"
               value={formatRatio(rangeStats.roas)}
-              helpText="Revenue / Cost"
+              helpText="Revenue divided by cost"
             />
           </InlineStack>
         </Layout.Section>
@@ -851,41 +960,32 @@ export default function CampaignDetails() {
 
         <Layout.Section>
           <Card>
-            <BlockStack gap="400">
-              <Text variant="headingMd" as="h2">
-                Campaign metrics
-              </Text>
+            <BlockStack gap="300">
+              <BlockStack gap="100">
+                <Text variant="headingMd" as="h2">
+                  Attributed orders
+                </Text>
+
+                <Text as="p" tone="subdued">
+                  Orders tracked through this campaign link.
+                </Text>
+              </BlockStack>
 
               <DataTable
-                columnContentTypes={["text", "text"]}
-                headings={["Metric", "Value"]}
-                rows={[
-                  ["Clicks 7d", String(campaign.clicks7d ?? 0)],
-                  ["Clicks 30d", String(campaign.clicks30d ?? 0)],
-                  ["Clicks total", String(campaign.clicksCount ?? 0)],
-                  ["Orders total", String(campaign.ordersCount ?? 0)],
-                  ["Conversion total", formatPercent(campaign.conversionRate)],
-                  [
-                    "Revenue total",
-                    formatMoneyFromCents(campaign.revenueCents || 0),
-                  ],
-                  ["Cost", formatMoneyFromCents(campaign.costCents || 0)],
-                  ["Profit total", formatMoneyFromCents(campaign.profitCents || 0)],
-                  ["ROI total", formatPercent(campaign.roi)],
-                  ["ROAS total", formatRatio(campaign.roas)],
-                  [
-                    "Break-even orders",
-                    campaign.breakEvenOrders != null
-                      ? String(campaign.breakEvenOrders)
-                      : "—",
-                  ],
-                  ["Created", formatDateTime(campaign.createdAt)],
-                  ["Updated", formatDateTime(campaign.updatedAt)],
-                  ["Target URL", campaign.targetUrl || "—"],
-                  ["Public Token", campaign.publicToken || "—"],
-                  ["Go Link", campaign.goUrl],
-                  ["Notes", campaign.notes || "—"],
-                ]}
+                columnContentTypes={["text", "text", "text", "text"]}
+                headings={["Time", "Order", "Revenue", "Currency"]}
+                rows={
+                  attributedOrderRows.length
+                    ? attributedOrderRows
+                    : [
+                        [
+                          "No attributed orders yet",
+                          "Orders appear here after checkout through a WhatSells tracking link",
+                          "—",
+                          "—",
+                        ],
+                      ]
+                }
               />
             </BlockStack>
           </Card>
@@ -895,7 +995,7 @@ export default function CampaignDetails() {
           <Card>
             <BlockStack gap="300">
               <Text variant="headingMd" as="h2">
-                Recent events
+                Recent tracking events
               </Text>
 
               <DataTable
@@ -912,7 +1012,7 @@ export default function CampaignDetails() {
                   "Type",
                   "Referer",
                   "Language",
-                  "Order ID",
+                  "Order",
                   "Value",
                 ]}
                 rows={
@@ -920,6 +1020,45 @@ export default function CampaignDetails() {
                     ? eventRows
                     : [["—", "—", "—", "—", "—", "—"]]
                 }
+              />
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2">
+                Campaign information
+              </Text>
+
+              <DataTable
+                columnContentTypes={["text", "text"]}
+                headings={["Metric", "Value"]}
+                rows={[
+                  ["Clicks last 7 days", String(campaign.clicks7d ?? 0)],
+                  ["Clicks last 30 days", String(campaign.clicks30d ?? 0)],
+                  ["Clicks", String(campaign.clicksCount ?? 0)],
+                  ["Orders", String(campaign.ordersCount ?? 0)],
+                  ["Conversion", formatPercent(campaign.conversionRate)],
+                  ["Revenue", formatMoneyFromCents(campaign.revenueCents || 0)],
+                  ["Cost", formatMoneyFromCents(campaign.costCents || 0)],
+                  ["Profit", formatMoneyFromCents(campaign.profitCents || 0)],
+                  ["ROI", formatPercent(campaign.roi)],
+                  ["ROAS", formatRatio(campaign.roas)],
+                  [
+                    "Break-even orders",
+                    campaign.breakEvenOrders != null
+                      ? String(campaign.breakEvenOrders)
+                      : "—",
+                  ],
+                  ["Created", formatDateTime(campaign.createdAt)],
+                  ["Updated", formatDateTime(campaign.updatedAt)],
+                  ["Destination URL", campaign.targetUrl || "—"],
+                  ["Public token", campaign.publicToken || "—"],
+                  ["Tracking link", campaign.goUrl],
+                  ["Notes", campaign.notes || "—"],
+                ]}
               />
             </BlockStack>
           </Card>
