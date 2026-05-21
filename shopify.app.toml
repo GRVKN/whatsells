@@ -22,11 +22,17 @@ topics = [ "orders/create" ]
 uri = "/webhooks/orders/create"
 
 [[webhooks.subscriptions]]
-compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+compliance_topics = [
+  "customers/data_request",
+  "customers/redact",
+  "shop/redact"
+]
 uri = "/webhooks/compliance"
 
 [access_scopes]
 scopes = "read_orders"
 
 [auth]
-redirect_urls = [ "https://app.whatsells.dev/auth/callback" ]
+redirect_urls = [
+  "https://app.whatsells.dev/auth/callback"
+]
