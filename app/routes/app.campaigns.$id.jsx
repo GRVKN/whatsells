@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLoaderData, useLocation } from "react-router";
+import { useLoaderData, useLocation, useNavigate } from "react-router";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
 import CampaignPerformanceChart from "../components/CampaignPerformanceChart.jsx";
@@ -718,6 +718,7 @@ function ChartTable({ rows }) {
 // ----------------------
 export default function CampaignDetails() {
   const location = useLocation();
+    const navigate = useNavigate();
 
   const {
     loadError,
@@ -738,11 +739,11 @@ export default function CampaignDetails() {
     if (range !== "live") return;
 
     const interval = window.setInterval(() => {
-      window.location.reload();
+      navigate(location.pathname + location.search);
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [range]);
+  }, [range, navigate, location.pathname, location.search]);
 
   if (loadError || !campaign) {
     return (
@@ -792,6 +793,10 @@ const campaignInsight = getCampaignInsight(campaign, rangeStats);
     window.setTimeout(() => {
       setCopyStatus("");
     }, 2500);
+  }
+
+  function changeRange(nextRange) {
+    navigate(buildRangeUrl(campaign.id, nextRange, location.search));
   }
 
   return (
@@ -875,35 +880,35 @@ const campaignInsight = getCampaignInsight(campaign, rangeStats);
               <InlineStack gap="200" wrap>
                 <Button
                   variant={range === "live" ? "primary" : "secondary"}
-                  url={buildRangeUrl(campaign.id, "live", location.search)}
+                  onClick={() => changeRange("live")}
                 >
                   Live
                 </Button>
 
                 <Button
                   variant={range === "24h" ? "primary" : "secondary"}
-                  url={buildRangeUrl(campaign.id, "24h", location.search)}
+                  onClick={() => changeRange("24h")}
                 >
                   24h
                 </Button>
 
                 <Button
                   variant={range === "7d" ? "primary" : "secondary"}
-                  url={buildRangeUrl(campaign.id, "7d", location.search)}
+                  onClick={() => changeRange("7d")}
                 >
                   7 days
                 </Button>
 
                 <Button
                   variant={range === "30d" ? "primary" : "secondary"}
-                  url={buildRangeUrl(campaign.id, "30d", location.search)}
+                  onClick={() => changeRange("30d")}
                 >
                   30 days
                 </Button>
 
                 <Button
                   variant={range === "all" ? "primary" : "secondary"}
-                  url={buildRangeUrl(campaign.id, "all", location.search)}
+                  onClick={() => changeRange("all")}
                 >
                   All time
                 </Button>
