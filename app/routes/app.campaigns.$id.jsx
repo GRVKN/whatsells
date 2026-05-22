@@ -373,6 +373,67 @@ function getMetricLabel(metric) {
   return "Clicks";
 }
 
+function getCampaignInsight(campaign, rangeStats) {
+  const clicks = numberOrZero(rangeStats?.clicks);
+  const orders = numberOrZero(rangeStats?.orders);
+  const revenueCents = numberOrZero(rangeStats?.revenueCents);
+  const profitCents = numberOrZero(rangeStats?.profitCents);
+  const costCents = numberOrZero(campaign?.costCents);
+  const roi = rangeStats?.roi;
+
+  if (clicks < 10 && orders === 0) {
+    return {
+      tone: "info",
+      title: "Waiting for more data",
+      message:
+        "This campaign has only a few clicks so far. Trends become clearer after more clicks and attributed orders.",
+    };
+  }
+
+  if (clicks >= 10 && orders === 0) {
+    return {
+      tone: "warning",
+      title: "Clicks, but no orders yet",
+      message:
+        "This campaign is getting attention, but no orders have been attributed yet. Check the destination page, offer, price or checkout flow.",
+    };
+  }
+
+  if (orders > 0 && profitCents > 0 && roi !== null && roi > 0) {
+    return {
+      tone: "success",
+      title: "Strong performer",
+      message:
+        "This campaign is generating attributed orders and positive profit. Consider increasing the budget or repeating this campaign idea.",
+    };
+  }
+
+  if (costCents > 0 && revenueCents === 0) {
+    return {
+      tone: "critical",
+      title: "Needs attention",
+      message:
+        "This campaign has cost but no attributed revenue yet. Keep watching it closely or pause it if performance does not improve.",
+    };
+  }
+
+  if (profitCents < 0 && orders > 0) {
+    return {
+      tone: "warning",
+      title: "Revenue is coming in, but profit is negative",
+      message:
+        "This campaign has attributed orders, but the campaign cost is still higher than the revenue. Check your margin, offer and campaign spend.",
+    };
+  }
+
+  return {
+    tone: "info",
+    title: "Campaign is being tracked",
+    message:
+      "WhatSells is collecting clicks, orders and revenue for this campaign. More data will improve the guidance.",
+  };
+}
+
 // ----------------------
 // Loader
 // ----------------------
@@ -716,11 +777,13 @@ export default function CampaignDetails() {
     event.valueCents != null ? formatMoneyFromCents(event.valueCents) : "—",
   ]);
 
-  const rankingTone = campaign.isTopCampaign
-    ? "success"
-    : campaign.needsAttention
-      ? "attention"
-      : "info";
+const rankingTone = campaign.isTopCampaign
+  ? "success"
+  : campaign.needsAttention
+    ? "attention"
+    : "info";
+
+const campaignInsight = getCampaignInsight(campaign, rangeStats);
 
   async function copyTrackingLink() {
     const ok = await safeCopy(campaign.goUrl);
@@ -898,6 +961,17 @@ export default function CampaignDetails() {
               helpText="Revenue divided by cost"
             />
           </InlineStack>
+        </Layout.Section>
+                <Layout.Section>
+          <Banner tone={campaignInsight.tone}>
+            <BlockStack gap="100">
+              <Text variant="headingSm" as="h2">
+                Campaign insight: {campaignInsight.title}
+              </Text>
+
+              <Text as="p">{campaignInsight.message}</Text>
+            </BlockStack>
+          </Banner>
         </Layout.Section>
 
         <Layout.Section>
