@@ -87,12 +87,20 @@ function getActiveSubscriptionQuery() {
   return `
     query ActiveSubscription($appId: ID!, $shopId: ID!) {
       activeSubscription(appId: $appId, shopId: $shopId) {
-        id
-        name
-        status
-        plan {
+        billingPeriod
+        cancelAtEndOfCycle
+        trialEndsAt
+        legacySubscriptionId
+        currentBillingCycle {
+          startsAt
+          endsAt
+        }
+        items {
           name
-          handle
+          plan {
+            handle
+            name
+          }
         }
       }
     }
@@ -172,13 +180,14 @@ function isProSubscription(activeSubscription) {
     return false;
   }
 
-  const status = activeSubscription.status;
-  const handle = activeSubscription.plan?.handle;
+  const items = Array.isArray(activeSubscription.items)
+    ? activeSubscription.items
+    : [];
 
-  return (
-    isActiveStatus(status) &&
-    normalizePlanHandle(handle) === normalizePlanHandle(PRO_PLAN_HANDLE)
-  );
+  return items.some((item) => {
+    const handle = item?.plan?.handle;
+    return normalizePlanHandle(handle) === normalizePlanHandle(PRO_PLAN_HANDLE);
+  });
 }
 
 export async function getShopPlan({ shop, admin }) {
@@ -254,8 +263,11 @@ export async function getShopPlan({ shop, admin }) {
       plan: result.plan,
       isPro: result.isPro,
       reason: result.reason,
-      subscriptionStatus: activeSubscription?.status || null,
-      subscriptionPlanHandle: activeSubscription?.plan?.handle || null,
+      subscriptionItems:
+        activeSubscription?.items?.map((item) => ({
+          name: item?.name || null,
+          handle: item?.plan?.handle || null,
+        })) || [],
     });
 
     return result;
