@@ -92,14 +92,15 @@ function getActiveSubscriptionQuery() {
         trialEndsAt
         legacySubscriptionId
         currentBillingCycle {
-          startsAt
-          endsAt
+          startTime
+          endTime
         }
         items {
-          name
-          plan {
-            handle
-            name
+          handle
+          description
+          price {
+            amount
+            currencyCode
           }
         }
       }
@@ -185,7 +186,7 @@ function isProSubscription(activeSubscription) {
     : [];
 
   return items.some((item) => {
-    const handle = item?.plan?.handle;
+    const handle = item?.handle;
     return normalizePlanHandle(handle) === normalizePlanHandle(PRO_PLAN_HANDLE);
   });
 }
@@ -263,11 +264,14 @@ export async function getShopPlan({ shop, admin }) {
       plan: result.plan,
       isPro: result.isPro,
       reason: result.reason,
-      subscriptionItems:
-        activeSubscription?.items?.map((item) => ({
-          name: item?.name || null,
-          handle: item?.plan?.handle || null,
-        })) || [],
+subscriptionItems:
+  activeSubscription?.items?.map((item) => ({
+    handle: item?.handle || null,
+    description: item?.description || null,
+    price: item?.price
+      ? `${item.price.amount} ${item.price.currencyCode}`
+      : null,
+  })) || [],
     });
 
     return result;
