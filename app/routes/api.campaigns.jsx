@@ -1,5 +1,6 @@
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
+import { getShopPlan } from "../billing.server";
 
 const ALLOWED_SOURCE_TYPES = new Set([
   "qr",
@@ -309,7 +310,7 @@ export async function loader({ request }) {
 }
 
 // POST /api/campaigns
-async function handleCreateCampaign(request, shop) {
+async function handleCreateCampaign(request, shop, admin) {
   let body;
 
   try {
@@ -359,7 +360,25 @@ async function handleCreateCampaign(request, shop) {
       { status: 409 },
     );
   }
+  const campaignCount = await db.campaign.count({
+    where: { shop },
+  });
 
+  const plan = await getShopPlan({ shop, admin });
+
+  if (!plan.isPro && campaignCount >= 1) {
+    return Response.json(
+      {
+        error:
+          "Your free plan includes 1 campaign. Upgrade to Pro Analytics to create unlimited campaigns.",
+        upgradeRequired: true,
+        upgradeUrl: plan.upgradeUrl,
+        proUrl: plan.proUrl,
+        plan: plan.plan,
+      },
+      { status: 403 },
+    );
+  }
   try {
     const campaign = await db.campaign.create({
       data: {
@@ -434,12 +453,12 @@ async function handleDeleteCampaign(request, shop) {
 }
 
 export async function action({ request }) {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
   switch (request.method.toUpperCase()) {
     case "POST":
-      return handleCreateCampaign(request, shop);
+      return handleCreateCampaign(request, shop, admin);
 
     case "DELETE":
       return handleDeleteCampaign(request, shop);

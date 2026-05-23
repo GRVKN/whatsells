@@ -264,7 +264,7 @@ export default function AppIndex() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [campaigns, setCampaigns] = useState([]);
-
+  const [upgradeUrl, setUpgradeUrl] = useState("");
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState("qr");
   const [targetUrl, setTargetUrl] = useState("");
@@ -421,9 +421,19 @@ export default function AppIndex() {
 
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        throw new Error(data?.error || `Create failed (${res.status})`);
-      }
+if (!res.ok) {
+  if (data?.upgradeRequired && data?.upgradeUrl) {
+    setUpgradeUrl(data.upgradeUrl);
+    setErr(
+      data.error ||
+        "Your free plan includes 1 campaign. Upgrade to Pro Analytics to create unlimited campaigns.",
+    );
+
+    return;
+  }
+
+  throw new Error(data?.error || `Create failed (${res.status})`);
+}
 
       resetForm();
       showToast("Campaign created");
@@ -599,11 +609,32 @@ export default function AppIndex() {
                     </Button>
                   </InlineStack>
 
-                  {err ? (
-                    <Banner tone="critical" onDismiss={() => setErr("")}>
-                      {err}
-                    </Banner>
-                  ) : null}
+{err ? (
+  <Banner
+    tone={upgradeUrl ? "warning" : "critical"}
+    onDismiss={() => {
+      setErr("");
+      setUpgradeUrl("");
+    }}
+  >
+    <BlockStack gap="200">
+      <Text as="p">{err}</Text>
+
+      {upgradeUrl ? (
+        <InlineStack gap="200">
+          <Button
+            variant="primary"
+            onClick={() => {
+              window.open(upgradeUrl, "_top");
+            }}
+          >
+            Upgrade to Pro Analytics
+          </Button>
+        </InlineStack>
+      ) : null}
+    </BlockStack>
+  </Banner>
+) : null}
 
                   <InlineStack gap="300" wrap>
                     <MetricCard
@@ -734,10 +765,11 @@ export default function AppIndex() {
                         Campaigns
                       </Text>
 
-                      <Text as="p" tone="subdued">
-                        Compare clicks, orders, revenue and ROI. Open details
-                        for deeper performance data.
-                      </Text>
+<Text as="p" tone="subdued">
+  Create a tracking link or QR campaign and send visitors to
+  your Shopify product page. Start with 1 free campaign, then
+  upgrade to Pro Analytics for unlimited campaigns.
+</Text>
                     </BlockStack>
                   </InlineStack>
 
