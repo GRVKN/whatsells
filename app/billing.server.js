@@ -1,7 +1,10 @@
 // app/billing.server.js
 
 const APP_HANDLE = process.env.SHOPIFY_APP_HANDLE || "whatsells-1";
+
+const BASIC_PLAN_HANDLE = process.env.SHOPIFY_BASIC_PLAN_HANDLE || "basic";
 const PRO_PLAN_HANDLE = process.env.SHOPIFY_PRO_PLAN_HANDLE || "pro";
+
 const APP_GID = process.env.SHOPIFY_APP_GID || "";
 const PARTNER_API_TOKEN = process.env.SHOPIFY_PARTNER_API_TOKEN || "";
 const PARTNER_ORG_ID = process.env.SHOPIFY_PARTNER_ORG_ID || "";
@@ -39,6 +42,16 @@ export function getPricingPlansUrl(shop) {
   }
 
   return `https://admin.shopify.com/store/${storeHandle}/charges/${APP_HANDLE}/pricing_plans`;
+}
+
+export function getBasicPlanUrl(shop) {
+  const storeHandle = getStoreHandle(shop);
+
+  if (!storeHandle) {
+    return "https://admin.shopify.com";
+  }
+
+  return `https://admin.shopify.com/store/${storeHandle}/charges/${APP_HANDLE}/plans/${BASIC_PLAN_HANDLE}`;
 }
 
 export function getProPlanUrl(shop) {
@@ -127,7 +140,13 @@ async function parsePartnerResponse(response) {
 async function fetchActiveSubscription({ appGid, shopGid }) {
   const partnerApiUrl = getPartnerApiUrl();
 
-  if (!PARTNER_API_TOKEN || !PARTNER_ORG_ID || !partnerApiUrl || !appGid || !shopGid) {
+  if (
+    !PARTNER_API_TOKEN ||
+    !PARTNER_ORG_ID ||
+    !partnerApiUrl ||
+    !appGid ||
+    !shopGid
+  ) {
     console.log("Partner API billing check skipped", {
       hasPartnerToken: Boolean(PARTNER_API_TOKEN),
       hasPartnerOrgId: Boolean(PARTNER_ORG_ID),
@@ -176,33 +195,123 @@ async function fetchActiveSubscription({ appGid, shopGid }) {
   }
 }
 
-function isProSubscription(activeSubscription) {
+function getSubscriptionItems(activeSubscription) {
   if (!activeSubscription) {
+    return [];
+  }
+
+  return Array.isArray(activeSubscription.items)
+    ? activeSubscription.items
+    : [];
+}
+
+function hasSubscriptionPlan(activeSubscription, planHandle) {
+  const normalizedWantedHandle = normalizePlanHandle(planHandle);
+  const items = getSubscriptionItems(activeSubscription);
+
+  if (!normalizedWantedHandle || !items.length) {
     return false;
   }
 
-  const items = Array.isArray(activeSubscription.items)
-    ? activeSubscription.items
-    : [];
-
   return items.some((item) => {
-    const handle = item?.handle;
-    return normalizePlanHandle(handle) === normalizePlanHandle(PRO_PLAN_HANDLE);
+    const handle = normalizePlanHandle(item?.handle);
+    return handle === normalizedWantedHandle;
   });
 }
 
-export async function getShopPlan({ shop, admin }) {
+function isBasicSubscription(activeSubscription) {
+  return hasSubscriptionPlan(activeSubscription, BASIC_PLAN_HANDLE);
+}
+
+function isProSubscription(activeSubscription) {
+  return hasSubscriptionPlan(activeSubscription, PRO_PLAN_HANDLE);
+}
+
+function buildFallbackPlan({ shop, reason = "fallback_free" }) {
   const upgradeUrl = getPricingPlansUrl(shop);
+  const basicUrl = getBasicPlanUrl(shop);
   const proUrl = getProPlanUrl(shop);
 
-  const fallback = {
+  return {
     plan: "free",
+
+    isFree: true,
+    isBasic: false,
     isPro: false,
+    isPaid: false,
+
+    hasBasic: false,
+    hasPro: false,
+
     upgradeUrl,
+    basicUrl,
     proUrl,
+
+    basicPlanHandle: BASIC_PLAN_HANDLE,
+    proPlanHandle: PRO_PLAN_HANDLE,
+
     subscription: null,
-    reason: "fallback_free",
+    subscriptionItems: [],
+
+    reason,
   };
+}
+
+function buildPlanResult({ shop, activeSubscription, reason }) {
+  const upgradeUrl = getPricingPlansUrl(shop);
+  const basicUrl = getBasicPlanUrl(shop);
+  const proUrl = getProPlanUrl(shop);
+
+  const isPro = isProSubscription(activeSubscription);
+  const isBasic = !isPro && isBasicSubscription(activeSubscription);
+  const isPaid = isBasic || isPro;
+  const isFree = !isPaid;
+
+  let plan = "free";
+
+  if (isPro) {
+    plan = "pro";
+  } else if (isBasic) {
+    plan = "basic";
+  }
+
+  const subscriptionItems = getSubscriptionItems(activeSubscription).map(
+    (item) => ({
+      handle: item?.handle || null,
+      description: item?.description || null,
+      price: item?.price
+        ? `${item.price.amount} ${item.price.currencyCode}`
+        : null,
+    }),
+  );
+
+  return {
+    plan,
+
+    isFree,
+    isBasic,
+    isPro,
+    isPaid,
+
+    hasBasic: isBasic,
+    hasPro: isPro,
+
+    upgradeUrl,
+    basicUrl,
+    proUrl,
+
+    basicPlanHandle: BASIC_PLAN_HANDLE,
+    proPlanHandle: PRO_PLAN_HANDLE,
+
+    subscription: activeSubscription,
+    subscriptionItems,
+
+    reason,
+  };
+}
+
+export async function getShopPlan({ shop, admin }) {
+  const fallback = buildFallbackPlan({ shop });
 
   try {
     if (!admin) {
@@ -247,31 +356,24 @@ export async function getShopPlan({ shop, admin }) {
       shopGid,
     });
 
-    const isPro = isProSubscription(activeSubscription);
-
-    const result = {
-      plan: isPro ? "pro" : "free",
-      isPro,
-      upgradeUrl,
-      proUrl,
-      subscription: activeSubscription,
+    const result = buildPlanResult({
+      shop,
+      activeSubscription,
       reason: activeSubscription ? "subscription_checked" : "no_subscription",
-    };
+    });
 
     console.log("Billing plan checked", {
       shop,
       shopGid,
       plan: result.plan,
+      isFree: result.isFree,
+      isBasic: result.isBasic,
       isPro: result.isPro,
+      isPaid: result.isPaid,
       reason: result.reason,
-subscriptionItems:
-  activeSubscription?.items?.map((item) => ({
-    handle: item?.handle || null,
-    description: item?.description || null,
-    price: item?.price
-      ? `${item.price.amount} ${item.price.currencyCode}`
-      : null,
-  })) || [],
+      basicPlanHandle: result.basicPlanHandle,
+      proPlanHandle: result.proPlanHandle,
+      subscriptionItems: result.subscriptionItems,
     });
 
     return result;

@@ -16,7 +16,14 @@ import {
   BlockStack,
   Toast,
   Frame,
+  Badge,
 } from "@shopify/polaris";
+
+// ----------------------
+// Plan constants
+// ----------------------
+const FREE_CAMPAIGN_LIMIT = 3;
+const BASIC_CAMPAIGN_LIMIT = 20;
 
 // ----------------------
 // Helpers
@@ -178,6 +185,136 @@ function compareCampaignsNeedingAttention(a, b) {
   return checks.find((value) => value !== 0) || 0;
 }
 
+function normalizePlanName(value) {
+  return String(value || "free").trim().toLowerCase();
+}
+
+function getDefaultCapabilities() {
+  return {
+    plan: "Free",
+    campaignLimit: FREE_CAMPAIGN_LIMIT,
+    campaignCount: 0,
+    remainingCampaigns: FREE_CAMPAIGN_LIMIT,
+    canCreateCampaign: true,
+    hasUnlimitedCampaigns: false,
+    canUseAddToCartTracking: false,
+  };
+}
+
+function getPlanName(capabilities) {
+  const rawPlan = normalizePlanName(capabilities?.plan);
+
+  if (rawPlan === "pro") return "Pro";
+  if (rawPlan === "basic") return "Basic";
+
+  return "Free";
+}
+
+function isProPlan(capabilities) {
+  return getPlanName(capabilities) === "Pro";
+}
+
+function isBasicPlan(capabilities) {
+  return getPlanName(capabilities) === "Basic";
+}
+
+function isFreePlan(capabilities) {
+  return getPlanName(capabilities) === "Free";
+}
+
+function getCampaignLimit(capabilities) {
+  if (capabilities?.campaignLimit === null) return null;
+
+  const planName = getPlanName(capabilities);
+
+  if (planName === "Pro") return null;
+  if (planName === "Basic") return BASIC_CAMPAIGN_LIMIT;
+
+  return FREE_CAMPAIGN_LIMIT;
+}
+
+function getRemainingCampaigns(capabilities, campaignCount) {
+  const limit = getCampaignLimit(capabilities);
+
+  if (limit === null) return null;
+
+  return Math.max(limit - campaignCount, 0);
+}
+
+function canCreateCampaign(capabilities, campaignCount) {
+  const limit = getCampaignLimit(capabilities);
+
+  if (limit === null) return true;
+
+  return campaignCount < limit;
+}
+
+function getPlanBadgeTone(capabilities) {
+  if (isProPlan(capabilities)) return "success";
+  if (isBasicPlan(capabilities)) return "info";
+
+  return "attention";
+}
+
+function getPlanHeadline(capabilities, campaignCount) {
+  const planName = getPlanName(capabilities);
+  const limit = getCampaignLimit(capabilities);
+
+  if (limit === null) {
+    return "Pro Analytics active · Unlimited campaigns";
+  }
+
+  return `${planName} plan · ${campaignCount} of ${limit} campaigns used`;
+}
+
+function getPlanHelpText(capabilities, campaignCount) {
+  const planName = getPlanName(capabilities);
+  const limit = getCampaignLimit(capabilities);
+  const remaining = getRemainingCampaigns(capabilities, campaignCount);
+
+  if (limit === null) {
+    return "You can create unlimited campaigns. Add-to-Cart tracking is reserved for Pro Analytics.";
+  }
+
+  if (remaining <= 0 && planName === "Free") {
+    return `You have used your ${FREE_CAMPAIGN_LIMIT} free campaigns. Upgrade to Basic for up to ${BASIC_CAMPAIGN_LIMIT} campaigns or Pro for unlimited campaigns.`;
+  }
+
+  if (remaining <= 0 && planName === "Basic") {
+    return `You have used your ${BASIC_CAMPAIGN_LIMIT} Basic campaigns. Upgrade to Pro Analytics for unlimited campaigns and Add-to-Cart tracking.`;
+  }
+
+  if (planName === "Free") {
+    return `${remaining} free campaign${remaining === 1 ? "" : "s"} remaining. Upgrade when you need more.`;
+  }
+
+  return `${remaining} Basic campaign${remaining === 1 ? "" : "s"} remaining. Upgrade to Pro when you need unlimited campaigns.`;
+}
+
+function getCreateButtonLabel(capabilities, campaignCount) {
+  if (canCreateCampaign(capabilities, campaignCount)) {
+    return "Create campaign";
+  }
+
+  if (isFreePlan(capabilities)) {
+    return "Free limit reached";
+  }
+
+  if (isBasicPlan(capabilities)) {
+    return "Basic limit reached";
+  }
+
+  return "Create campaign";
+}
+
+function getUpgradeButtonLabel(capabilities) {
+  if (isBasicPlan(capabilities)) {
+    return "Upgrade to Pro Analytics";
+  }
+
+  return "View plans";
+}
+
 // ----------------------
 // Small UI blocks
 // ----------------------
@@ -254,6 +391,86 @@ function CampaignHighlightCard({ title, campaign, emptyText }) {
   );
 }
 
+function PlanStatusCard({
+  capabilities,
+  campaignCount,
+  upgradeUrl,
+  proUrl,
+}) {
+  const planName = getPlanName(capabilities);
+  const limit = getCampaignLimit(capabilities);
+  const remaining = getRemainingCampaigns(capabilities, campaignCount);
+  const createAllowed = canCreateCampaign(capabilities, campaignCount);
+  const showUpgradeButton = !isProPlan(capabilities) && (upgradeUrl || proUrl);
+
+  let bannerTone = "info";
+
+  if (!createAllowed) {
+    bannerTone = "warning";
+  } else if (isProPlan(capabilities)) {
+    bannerTone = "success";
+  }
+
+  return (
+    <Banner tone={bannerTone}>
+      <BlockStack gap="200">
+        <InlineStack gap="200" align="space-between" wrap>
+          <InlineStack gap="200" wrap>
+            <Badge tone={getPlanBadgeTone(capabilities)}>{planName}</Badge>
+
+            <Text as="p" fontWeight="semibold">
+              {getPlanHeadline(capabilities, campaignCount)}
+            </Text>
+          </InlineStack>
+
+          {showUpgradeButton ? (
+            <Button
+              variant="primary"
+              onClick={() => {
+                window.open(proUrl || upgradeUrl, "_top");
+              }}
+            >
+              {getUpgradeButtonLabel(capabilities)}
+            </Button>
+          ) : null}
+        </InlineStack>
+
+        <Text as="p">{getPlanHelpText(capabilities, campaignCount)}</Text>
+
+        <InlineStack gap="200" wrap>
+          <Text as="p" tone="subdued">
+            Free: {FREE_CAMPAIGN_LIMIT} campaigns
+          </Text>
+
+          <Text as="p" tone="subdued">
+            Basic: {BASIC_CAMPAIGN_LIMIT} campaigns
+          </Text>
+
+          <Text as="p" tone="subdued">
+            Pro: unlimited
+          </Text>
+
+          {isProPlan(capabilities) ? (
+            <Text as="p" tone="subdued">
+              Add-to-Cart tracking enabled
+            </Text>
+          ) : (
+            <Text as="p" tone="subdued">
+              Add-to-Cart tracking requires Pro
+            </Text>
+          )}
+        </InlineStack>
+
+        {limit !== null ? (
+          <Text as="p" tone="subdued">
+            Remaining campaigns: {remaining}
+          </Text>
+        ) : null}
+      </BlockStack>
+    </Banner>
+  );
+}
+
 // ----------------------
 // Component
 // ----------------------
@@ -264,7 +481,12 @@ export default function AppIndex() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [campaigns, setCampaigns] = useState([]);
+  const [capabilities, setCapabilities] = useState(getDefaultCapabilities());
+
   const [upgradeUrl, setUpgradeUrl] = useState("");
+  const [basicUrl, setBasicUrl] = useState("");
+  const [proUrl, setProUrl] = useState("");
+
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState("qr");
   const [targetUrl, setTargetUrl] = useState("");
@@ -279,6 +501,9 @@ export default function AppIndex() {
   const [qrOpen, setQrOpen] = useState(false);
   const [qrValue, setQrValue] = useState("");
   const [qrTitle, setQrTitle] = useState("");
+
+  const campaignCount = campaigns.length;
+  const createAllowed = canCreateCampaign(capabilities, campaignCount);
 
   const showToast = useCallback((content) => {
     setToast({ active: true, content });
@@ -383,7 +608,29 @@ export default function AppIndex() {
         throw new Error(data?.error || `Load failed (${res.status})`);
       }
 
-      setCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : []);
+      const nextCampaigns = Array.isArray(data?.campaigns)
+        ? data.campaigns
+        : [];
+
+      setCampaigns(nextCampaigns);
+
+      const nextCapabilities = data?.capabilities
+        ? data.capabilities
+        : {
+            ...getDefaultCapabilities(),
+            campaignCount: nextCampaigns.length,
+            remainingCampaigns: Math.max(
+              FREE_CAMPAIGN_LIMIT - nextCampaigns.length,
+              0,
+            ),
+            canCreateCampaign: nextCampaigns.length < FREE_CAMPAIGN_LIMIT,
+          };
+
+      setCapabilities(nextCapabilities);
+
+      if (data?.upgradeUrl) setUpgradeUrl(data.upgradeUrl);
+      if (data?.basicUrl) setBasicUrl(data.basicUrl);
+      if (data?.proUrl) setProUrl(data.proUrl);
     } catch (e) {
       setErr(e?.message || "Could not load campaigns.");
     } finally {
@@ -393,12 +640,18 @@ export default function AppIndex() {
 
   const createCampaign = useCallback(async () => {
     setErr("");
+    setUpgradeUrl("");
 
     const trimmedName = name.trim();
     const trimmedTargetUrl = targetUrl.trim();
 
     if (!trimmedName) {
       setErr("Please enter a campaign name.");
+      return;
+    }
+
+    if (!canCreateCampaign(capabilities, campaignCount)) {
+      setErr(getPlanHelpText(capabilities, campaignCount));
       return;
     }
 
@@ -421,19 +674,49 @@ export default function AppIndex() {
 
       const data = await res.json().catch(() => ({}));
 
-if (!res.ok) {
-  if (data?.upgradeRequired && data?.upgradeUrl) {
-    setUpgradeUrl(data.upgradeUrl);
-    setErr(
-      data.error ||
-        "Your free plan includes 1 campaign. Upgrade to Pro Analytics to create unlimited campaigns.",
-    );
+      if (!res.ok) {
+        if (data?.upgradeRequired) {
+          if (data?.upgradeUrl) setUpgradeUrl(data.upgradeUrl);
+          if (data?.basicUrl) setBasicUrl(data.basicUrl);
+          if (data?.proUrl) setProUrl(data.proUrl);
 
-    return;
-  }
+          setErr(
+            data.error ||
+              "Your campaign limit has been reached. Upgrade to create more campaigns.",
+          );
 
-  throw new Error(data?.error || `Create failed (${res.status})`);
-}
+          if (data?.plan || data?.campaignLimit !== undefined) {
+            setCapabilities((prev) => ({
+              ...prev,
+              plan: data?.plan || prev.plan,
+              campaignLimit:
+                data?.campaignLimit !== undefined
+                  ? data.campaignLimit
+                  : prev.campaignLimit,
+              campaignCount:
+                data?.campaignCount !== undefined
+                  ? data.campaignCount
+                  : campaignCount,
+              remainingCampaigns:
+                data?.remainingCampaigns !== undefined
+                  ? data.remainingCampaigns
+                  : 0,
+              canCreateCampaign: false,
+              canUseAddToCartTracking:
+                data?.canUseAddToCartTracking ??
+                prev.canUseAddToCartTracking,
+            }));
+          }
+
+          return;
+        }
+
+        throw new Error(data?.error || `Create failed (${res.status})`);
+      }
+
+      if (data?.capabilities) {
+        setCapabilities(data.capabilities);
+      }
 
       resetForm();
       showToast("Campaign created");
@@ -449,6 +732,8 @@ if (!res.ok) {
     targetUrl,
     cost,
     notes,
+    capabilities,
+    campaignCount,
     resetForm,
     loadCampaigns,
     showToast,
@@ -583,24 +868,21 @@ if (!res.ok) {
 
   return (
     <Frame>
-      <Page
-        title="WhatSells"
-        subtitle="Campaign tracking for Shopify"
-      >
+      <Page title="WhatSells" subtitle="Campaign tracking for Shopify">
         <Layout>
           <Layout.Section>
             <BlockStack gap="400">
               <Card>
                 <BlockStack gap="400">
-                  <InlineStack gap="400" align="space-between">
+                  <InlineStack gap="400" align="space-between" wrap>
                     <BlockStack gap="100">
                       <Text variant="headingMd" as="h2">
                         Dashboard
                       </Text>
 
                       <Text as="p" tone="subdued">
-                        See which campaign links create clicks, orders and
-                        revenue.
+                        See which campaign links and QR codes create clicks,
+                        orders and revenue.
                       </Text>
                     </BlockStack>
 
@@ -609,32 +891,42 @@ if (!res.ok) {
                     </Button>
                   </InlineStack>
 
-{err ? (
-  <Banner
-    tone={upgradeUrl ? "warning" : "critical"}
-    onDismiss={() => {
-      setErr("");
-      setUpgradeUrl("");
-    }}
-  >
-    <BlockStack gap="200">
-      <Text as="p">{err}</Text>
+                  <PlanStatusCard
+                    capabilities={capabilities}
+                    campaignCount={campaignCount}
+                    upgradeUrl={upgradeUrl || basicUrl}
+                    proUrl={proUrl}
+                  />
 
-      {upgradeUrl ? (
-        <InlineStack gap="200">
-          <Button
-            variant="primary"
-            onClick={() => {
-              window.open(upgradeUrl, "_top");
-            }}
-          >
-            Upgrade to Pro Analytics
-          </Button>
-        </InlineStack>
-      ) : null}
-    </BlockStack>
-  </Banner>
-) : null}
+                  {err ? (
+                    <Banner
+                      tone={upgradeUrl || proUrl || basicUrl ? "warning" : "critical"}
+                      onDismiss={() => {
+                        setErr("");
+                        setUpgradeUrl("");
+                      }}
+                    >
+                      <BlockStack gap="200">
+                        <Text as="p">{err}</Text>
+
+                        {upgradeUrl || proUrl || basicUrl ? (
+                          <InlineStack gap="200">
+                            <Button
+                              variant="primary"
+                              onClick={() => {
+                                window.open(
+                                  proUrl || upgradeUrl || basicUrl,
+                                  "_top",
+                                );
+                              }}
+                            >
+                              {getUpgradeButtonLabel(capabilities)}
+                            </Button>
+                          </InlineStack>
+                        ) : null}
+                      </BlockStack>
+                    </Banner>
+                  ) : null}
 
                   <InlineStack gap="300" wrap>
                     <MetricCard
@@ -691,6 +983,28 @@ if (!res.ok) {
                     </Text>
                   </BlockStack>
 
+                  {!createAllowed ? (
+                    <Banner tone="warning">
+                      <BlockStack gap="200">
+                        <Text as="p">{getPlanHelpText(capabilities, campaignCount)}</Text>
+
+                        {upgradeUrl || proUrl || basicUrl ? (
+                          <Button
+                            variant="primary"
+                            onClick={() => {
+                              window.open(
+                                proUrl || upgradeUrl || basicUrl,
+                                "_top",
+                              );
+                            }}
+                          >
+                            {getUpgradeButtonLabel(capabilities)}
+                          </Button>
+                        ) : null}
+                      </BlockStack>
+                    </Banner>
+                  ) : null}
+
                   <InlineStack gap="300" wrap align="start">
                     <div style={{ minWidth: 260, flex: 1 }}>
                       <TextField
@@ -699,6 +1013,7 @@ if (!res.ok) {
                         onChange={setName}
                         autoComplete="off"
                         placeholder="e.g. TikTok creator, flyer drop, packaging insert"
+                        disabled={!createAllowed}
                       />
                     </div>
 
@@ -708,6 +1023,7 @@ if (!res.ok) {
                         options={sourceOptions}
                         value={sourceType}
                         onChange={setSourceType}
+                        disabled={!createAllowed}
                       />
                     </div>
 
@@ -719,6 +1035,7 @@ if (!res.ok) {
                         autoComplete="off"
                         placeholder="https://your-shop.com/products/..."
                         helpText="Where visitors go after clicking this tracking link."
+                        disabled={!createAllowed}
                       />
                     </div>
 
@@ -730,6 +1047,7 @@ if (!res.ok) {
                         autoComplete="off"
                         placeholder="e.g. 250"
                         helpText="Optional. Used for profit and ROI."
+                        disabled={!createAllowed}
                       />
                     </div>
 
@@ -740,6 +1058,7 @@ if (!res.ok) {
                         onChange={setNotes}
                         autoComplete="off"
                         placeholder="e.g. 300 packaging inserts or creator deal"
+                        disabled={!createAllowed}
                       />
                     </div>
 
@@ -748,9 +1067,9 @@ if (!res.ok) {
                         variant="primary"
                         onClick={createCampaign}
                         loading={loading}
-                        disabled={!name.trim()}
+                        disabled={!name.trim() || !createAllowed}
                       >
-                        Create campaign
+                        {getCreateButtonLabel(capabilities, campaignCount)}
                       </Button>
                     </div>
                   </InlineStack>
@@ -759,18 +1078,23 @@ if (!res.ok) {
 
               <Card>
                 <BlockStack gap="400">
-                  <InlineStack align="space-between" gap="300">
+                  <InlineStack align="space-between" gap="300" wrap>
                     <BlockStack gap="100">
                       <Text variant="headingMd" as="h2">
                         Campaigns
                       </Text>
 
-<Text as="p" tone="subdued">
-  Create a tracking link or QR campaign and send visitors to
-  your Shopify product page. Start with 1 free campaign, then
-  upgrade to Pro Analytics for unlimited campaigns.
-</Text>
+                      <Text as="p" tone="subdued">
+                        Start with {FREE_CAMPAIGN_LIMIT} free campaigns. Basic
+                        includes up to {BASIC_CAMPAIGN_LIMIT} campaigns. Pro
+                        Analytics unlocks unlimited campaigns and Add-to-Cart
+                        tracking.
+                      </Text>
                     </BlockStack>
+
+                    <Badge tone={getPlanBadgeTone(capabilities)}>
+                      {getPlanHeadline(capabilities, campaignCount)}
+                    </Badge>
                   </InlineStack>
 
                   {campaigns.length ? (
@@ -817,6 +1141,28 @@ if (!res.ok) {
                     after visiting your store through a WhatSells tracking link.
                     Open campaign details to view attributed orders and recent
                     tracking events.
+                  </Text>
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="200">
+                  <InlineStack gap="200" wrap>
+                    <Badge tone={isProPlan(capabilities) ? "success" : "attention"}>
+                      Add-to-Cart tracking
+                    </Badge>
+
+                    <Text as="p" fontWeight="semibold">
+                      {isProPlan(capabilities)
+                        ? "Available in your Pro plan"
+                        : "Available with Pro Analytics"}
+                    </Text>
+                  </InlineStack>
+
+                  <Text as="p" tone="subdued">
+                    Add-to-Cart tracking will show which campaigns create cart
+                    intent before an order happens. This is the next Pro layer:
+                    click → add-to-cart → order.
                   </Text>
                 </BlockStack>
               </Card>

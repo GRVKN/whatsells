@@ -2,6 +2,9 @@ import db from "../db.server";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../billing.server";
 
+const FREE_CAMPAIGN_LIMIT = 3;
+const BASIC_CAMPAIGN_LIMIT = 20;
+
 const ALLOWED_SOURCE_TYPES = new Set([
   "qr",
   "link",
@@ -109,6 +112,22 @@ function calcConversionRate(clicks, orders) {
   return numberOrZero(orders) / totalClicks;
 }
 
+function calcAddToCartRate(clicks, addToCarts) {
+  const totalClicks = numberOrZero(clicks);
+
+  if (totalClicks <= 0) return 0;
+
+  return numberOrZero(addToCarts) / totalClicks;
+}
+
+function calcCartToOrderRate(addToCarts, orders) {
+  const totalAddToCarts = numberOrZero(addToCarts);
+
+  if (totalAddToCarts <= 0) return 0;
+
+  return numberOrZero(orders) / totalAddToCarts;
+}
+
 function calcAverageOrderValue(revenueCents, orders) {
   const totalOrders = numberOrZero(orders);
 
@@ -125,6 +144,78 @@ function calcBreakEvenOrders(costCents, avgOrderValueCents) {
   if (avgOrder <= 0) return null;
 
   return Math.ceil(cost / avgOrder);
+}
+
+function normalizePlanName(plan) {
+  return cleanStr(plan?.plan || plan?.name || plan?.currentPlan).toLowerCase();
+}
+
+function isProPlan(plan) {
+  const planName = normalizePlanName(plan);
+
+  return Boolean(
+    plan?.isPro ||
+      plan?.isExpert ||
+      plan?.hasPro ||
+      planName === "pro" ||
+      planName === "pro analytics" ||
+      planName === "expert" ||
+      planName === "expert+" ||
+      planName === "expert_plus",
+  );
+}
+
+function isBasicPlan(plan) {
+  const planName = normalizePlanName(plan);
+
+  return Boolean(
+    plan?.isBasic ||
+      plan?.hasBasic ||
+      plan?.isPaid ||
+      planName === "basic" ||
+      planName === "basic analytics",
+  );
+}
+
+function getCampaignLimit(plan) {
+  if (isProPlan(plan)) return null;
+  if (isBasicPlan(plan)) return BASIC_CAMPAIGN_LIMIT;
+
+  return FREE_CAMPAIGN_LIMIT;
+}
+
+function getPlanLabel(plan) {
+  if (isProPlan(plan)) return "Pro";
+  if (isBasicPlan(plan)) return "Basic";
+
+  return "Free";
+}
+
+function buildCampaignLimitMessage(plan, limit) {
+  const label = getPlanLabel(plan);
+
+  if (label === "Basic") {
+    return `Your Basic plan includes up to ${limit} campaigns. Upgrade to Pro to create unlimited campaigns.`;
+  }
+
+  return `Your free plan includes ${limit} campaigns. Upgrade to Basic to create up to ${BASIC_CAMPAIGN_LIMIT} campaigns, or Pro for unlimited campaigns.`;
+}
+
+function getPlanCapabilities(plan, campaignCount = 0) {
+  const campaignLimit = getCampaignLimit(plan);
+  const remainingCampaigns =
+    campaignLimit === null ? null : Math.max(campaignLimit - campaignCount, 0);
+
+  return {
+    plan: getPlanLabel(plan),
+    campaignLimit,
+    campaignCount,
+    remainingCampaigns,
+    canCreateCampaign:
+      campaignLimit === null || campaignCount < campaignLimit,
+    hasUnlimitedCampaigns: campaignLimit === null,
+    canUseAddToCartTracking: isProPlan(plan),
+  };
 }
 
 async function loadClickMaps(campaignIds) {
@@ -177,14 +268,24 @@ function enrichCampaign(campaign, clicks7dMap = {}, clicks30dMap = {}) {
 
   const clicks7d = clicks7dMap[campaign.id] || 0;
   const clicks30d = clicks30dMap[campaign.id] || 0;
+  const addToCartCount = numberOrZero(campaign.addToCartCount);
 
   return {
     ...campaign,
+    addToCartCount,
     profitCents,
     clicks7d,
     clicks30d,
     conversionRate: calcConversionRate(
       campaign.clicksCount,
+      campaign.ordersCount,
+    ),
+    addToCartRate: calcAddToCartRate(
+      campaign.clicksCount,
+      addToCartCount,
+    ),
+    cartToOrderRate: calcCartToOrderRate(
+      addToCartCount,
       campaign.ordersCount,
     ),
     averageOrderValueCents,
@@ -203,6 +304,7 @@ function hasPerformanceSignal(campaign) {
     numberOrZero(campaign.revenueCents) > 0 ||
     numberOrZero(campaign.profitCents) !== 0 ||
     numberOrZero(campaign.ordersCount) > 0 ||
+    numberOrZero(campaign.addToCartCount) > 0 ||
     numberOrZero(campaign.clicksCount) > 0 ||
     numberOrZero(campaign.clicks30d) > 0 ||
     numberOrZero(campaign.clicks7d) > 0
@@ -215,6 +317,9 @@ function compareCampaignPerformance(a, b) {
     numberOrZero(b.roi) - numberOrZero(a.roi),
     numberOrZero(b.revenueCents) - numberOrZero(a.revenueCents),
     numberOrZero(b.ordersCount) - numberOrZero(a.ordersCount),
+    numberOrZero(b.cartToOrderRate) - numberOrZero(a.cartToOrderRate),
+    numberOrZero(b.addToCartRate) - numberOrZero(a.addToCartRate),
+    numberOrZero(b.addToCartCount) - numberOrZero(a.addToCartCount),
     numberOrZero(b.conversionRate) - numberOrZero(a.conversionRate),
     numberOrZero(b.roas) - numberOrZero(a.roas),
     numberOrZero(b.clicks30d) - numberOrZero(a.clicks30d),
@@ -274,6 +379,7 @@ const campaignSelect = {
   targetUrl: true,
   costCents: true,
   clicksCount: true,
+  addToCartCount: true,
   revenueCents: true,
   ordersCount: true,
   notes: true,
@@ -284,17 +390,33 @@ const campaignSelect = {
 
 // GET /api/campaigns
 export async function loader({ request }) {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
-  const campaigns = await db.campaign.findMany({
-    where: { shop },
-    orderBy: { createdAt: "desc" },
-    select: campaignSelect,
-  });
+  const [campaigns, campaignCount, plan] = await Promise.all([
+    db.campaign.findMany({
+      where: { shop },
+      orderBy: { createdAt: "desc" },
+      select: campaignSelect,
+    }),
+
+    db.campaign.count({
+      where: { shop },
+    }),
+
+    getShopPlan({ shop, admin }),
+  ]);
+
+  const capabilities = getPlanCapabilities(plan, campaignCount);
 
   if (!campaigns.length) {
-    return Response.json({ campaigns: [] });
+    return Response.json({
+      campaigns: [],
+      capabilities,
+      upgradeUrl: plan.upgradeUrl,
+      basicUrl: plan.basicUrl,
+      proUrl: plan.proUrl,
+    });
   }
 
   const campaignIds = campaigns.map((campaign) => campaign.id);
@@ -306,7 +428,13 @@ export async function loader({ request }) {
 
   const rankedCampaigns = addCampaignRanking(enriched);
 
-  return Response.json({ campaigns: rankedCampaigns });
+  return Response.json({
+    campaigns: rankedCampaigns,
+    capabilities,
+    upgradeUrl: plan.upgradeUrl,
+    basicUrl: plan.basicUrl,
+    proUrl: plan.proUrl,
+  });
 }
 
 // POST /api/campaigns
@@ -360,25 +488,32 @@ async function handleCreateCampaign(request, shop, admin) {
       { status: 409 },
     );
   }
+
   const campaignCount = await db.campaign.count({
     where: { shop },
   });
 
   const plan = await getShopPlan({ shop, admin });
+  const campaignLimit = getCampaignLimit(plan);
 
-  if (!plan.isPro && campaignCount >= 1) {
+  if (campaignLimit !== null && campaignCount >= campaignLimit) {
     return Response.json(
       {
-        error:
-          "Your free plan includes 1 campaign. Upgrade to Pro Analytics to create unlimited campaigns.",
+        error: buildCampaignLimitMessage(plan, campaignLimit),
         upgradeRequired: true,
         upgradeUrl: plan.upgradeUrl,
+        basicUrl: plan.basicUrl,
         proUrl: plan.proUrl,
-        plan: plan.plan,
+        plan: getPlanLabel(plan),
+        campaignLimit,
+        campaignCount,
+        remainingCampaigns: 0,
+        canUseAddToCartTracking: isProPlan(plan),
       },
       { status: 403 },
     );
   }
+
   try {
     const campaign = await db.campaign.create({
       data: {
@@ -394,7 +529,13 @@ async function handleCreateCampaign(request, shop, admin) {
     });
 
     return Response.json(
-      { campaign: enrichCampaign(campaign) },
+      {
+        campaign: enrichCampaign(campaign),
+        capabilities: getPlanCapabilities(plan, campaignCount + 1),
+        upgradeUrl: plan.upgradeUrl,
+        basicUrl: plan.basicUrl,
+        proUrl: plan.proUrl,
+      },
       { status: 201 },
     );
   } catch (error) {
@@ -406,7 +547,82 @@ async function handleCreateCampaign(request, shop, admin) {
     );
   }
 }
+// PUT /api/campaigns
+async function handleUpdateCampaign(request, shop, admin) {
+  let body;
 
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const id = cleanStr(body?.id);
+  const costCents = parseMoneyToCents(body?.cost, null);
+
+  if (!id) {
+    return Response.json({ error: "Campaign id is required" }, { status: 400 });
+  }
+
+  if (costCents === null) {
+    return Response.json({ error: "Invalid cost value" }, { status: 400 });
+  }
+
+  const plan = await getShopPlan({ shop, admin });
+
+  if (!isProPlan(plan)) {
+    return Response.json(
+      {
+        error:
+          "Editing campaign costs over time is available in Pro Analytics.",
+        upgradeRequired: true,
+        upgradeUrl: plan.upgradeUrl,
+        basicUrl: plan.basicUrl,
+        proUrl: plan.proUrl,
+        plan: getPlanLabel(plan),
+        canUseAddToCartTracking: false,
+      },
+      { status: 403 },
+    );
+  }
+
+  const existing = await db.campaign.findFirst({
+    where: { id, shop },
+    select: { id: true, name: true },
+  });
+
+  if (!existing) {
+    return Response.json({ error: "Campaign not found" }, { status: 404 });
+  }
+
+  try {
+    const campaign = await db.campaign.update({
+      where: { id },
+      data: {
+        costCents,
+      },
+      select: campaignSelect,
+    });
+
+    return Response.json({
+      ok: true,
+      campaign: enrichCampaign(campaign),
+      message:
+        "Campaign cost updated. Profit, ROI and ROAS were recalculated.",
+    });
+  } catch (error) {
+    console.error("Could not update campaign cost:", {
+      error,
+      shop,
+      campaignId: id,
+    });
+
+    return Response.json(
+      { error: "Could not update campaign cost." },
+      { status: 500 },
+    );
+  }
+}
 // DELETE /api/campaigns
 async function handleDeleteCampaign(request, shop) {
   let body;
@@ -456,17 +672,21 @@ export async function action({ request }) {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
-  switch (request.method.toUpperCase()) {
-    case "POST":
-      return handleCreateCampaign(request, shop, admin);
+switch (request.method.toUpperCase()) {
+  case "POST":
+    return handleCreateCampaign(request, shop, admin);
 
-    case "DELETE":
-      return handleDeleteCampaign(request, shop);
+  case "PUT":
+  case "PATCH":
+    return handleUpdateCampaign(request, shop, admin);
 
-    default:
-      return Response.json(
-        { error: `Method ${request.method} not allowed` },
-        { status: 405 },
-      );
-  }
+  case "DELETE":
+    return handleDeleteCampaign(request, shop);
+
+  default:
+    return Response.json(
+      { error: `Method ${request.method} not allowed` },
+      { status: 405 },
+    );
+}
 }

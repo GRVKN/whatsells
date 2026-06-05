@@ -25,6 +25,7 @@ enum CampaignStatus {
 enum EventType {
   click
   view
+  add_to_cart
   purchase
 }
 
@@ -51,21 +52,22 @@ model Session {
 }
 
 model Campaign {
-  id            String             @id @default(cuid())
-  shop          String
-  publicToken   String             @unique @default(cuid())
-  name          String
-  sourceType    CampaignSourceType @default(qr)
-  targetUrl     String?
-  costCents     Int                @default(0)
-  clicksCount   Int                @default(0)
-  revenueCents  Int                @default(0)
-  ordersCount   Int                @default(0)
-  notes         String?
-  status        CampaignStatus     @default(active)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  events        Event[]
+  id              String             @id @default(cuid())
+  shop            String
+  publicToken     String             @unique @default(cuid())
+  name            String
+  sourceType      CampaignSourceType @default(qr)
+  targetUrl       String?
+  costCents       Int                @default(0)
+  clicksCount     Int                @default(0)
+  addToCartCount  Int                @default(0)
+  revenueCents    Int                @default(0)
+  ordersCount     Int                @default(0)
+  notes           String?
+  status          CampaignStatus     @default(active)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  events          Event[]
 
   @@index([shop, createdAt])
   @@index([shop, status])
@@ -95,4 +97,5 @@ model Event {
 
   @@index([campaignId, createdAt])
   @@index([type, createdAt])
+  @@index([campaignId, type, createdAt])
 }

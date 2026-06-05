@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { useLoaderData, useLocation, useNavigate } from "react-router";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
+import { getShopPlan } from "../billing.server";
 import CampaignPerformanceChart from "../components/CampaignPerformanceChart.jsx";
 import {
   Page,
   Layout,
   Card,
   Text,
+  TextField,
   BlockStack,
   InlineStack,
   DataTable,
@@ -15,6 +17,9 @@ import {
   Button,
   Banner,
 } from "@shopify/polaris";
+
+const FREE_CAMPAIGN_LIMIT = 3;
+const BASIC_CAMPAIGN_LIMIT = 20;
 
 // ----------------------
 // Formatting helpers
@@ -56,7 +61,10 @@ function formatRatio(value) {
 
   return `${Number(value).toFixed(2)}x`;
 }
-
+function formatCostInputFromCents(cents) {
+  const value = Number(cents || 0) / 100;
+  return value.toFixed(2).replace(".", ",");
+}
 function numberOrZero(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
@@ -84,6 +92,64 @@ async function safeCopy(text) {
   } catch {
     return false;
   }
+}
+
+// ----------------------
+// Plan helpers
+// ----------------------
+function cleanStr(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePlanName(plan) {
+  return cleanStr(plan?.plan || plan?.name || plan?.currentPlan).toLowerCase();
+}
+
+function isProPlan(plan) {
+  const planName = normalizePlanName(plan);
+
+  return Boolean(
+    plan?.isPro ||
+      plan?.isExpert ||
+      plan?.hasPro ||
+      planName === "pro" ||
+      planName === "pro analytics" ||
+      planName === "expert" ||
+      planName === "expert+" ||
+      planName === "expert_plus",
+  );
+}
+
+function isBasicPlan(plan) {
+  const planName = normalizePlanName(plan);
+
+  return Boolean(
+    plan?.isBasic ||
+      plan?.hasBasic ||
+      planName === "basic" ||
+      planName === "basic analytics",
+  );
+}
+
+function getPlanLabel(plan) {
+  if (isProPlan(plan)) return "Pro Analytics";
+  if (isBasicPlan(plan)) return "Basic";
+
+  return "Free";
+}
+
+function getPlanTone(plan) {
+  if (isProPlan(plan)) return "success";
+  if (isBasicPlan(plan)) return "info";
+
+  return "attention";
+}
+
+function getCampaignLimit(plan) {
+  if (isProPlan(plan)) return null;
+  if (isBasicPlan(plan)) return BASIC_CAMPAIGN_LIMIT;
+
+  return FREE_CAMPAIGN_LIMIT;
 }
 
 // ----------------------
@@ -115,6 +181,22 @@ function calcConversionRate(clicks, orders) {
   if (totalClicks <= 0) return 0;
 
   return numberOrZero(orders) / totalClicks;
+}
+
+function calcAddToCartRate(clicks, addToCarts) {
+  const totalClicks = numberOrZero(clicks);
+
+  if (totalClicks <= 0) return 0;
+
+  return numberOrZero(addToCarts) / totalClicks;
+}
+
+function calcCartToOrderRate(addToCarts, orders) {
+  const totalAddToCarts = numberOrZero(addToCarts);
+
+  if (totalAddToCarts <= 0) return 0;
+
+  return numberOrZero(orders) / totalAddToCarts;
 }
 
 function calcAverageOrderValue(revenueCents, orders) {
@@ -248,6 +330,7 @@ function hasPerformanceSignal(campaign) {
     numberOrZero(campaign.costCents) > 0 ||
     numberOrZero(campaign.revenueCents) > 0 ||
     numberOrZero(campaign.ordersCount) > 0 ||
+    numberOrZero(campaign.addToCartCount) > 0 ||
     numberOrZero(campaign.clicksCount) > 0
   );
 }
@@ -262,11 +345,20 @@ function compareCampaignPerformance(a, b) {
   const aRoas = calcRoas(a.costCents, a.revenueCents) ?? 0;
   const bRoas = calcRoas(b.costCents, b.revenueCents) ?? 0;
 
+  const aAddRate = calcAddToCartRate(a.clicksCount, a.addToCartCount);
+  const bAddRate = calcAddToCartRate(b.clicksCount, b.addToCartCount);
+
+  const aCartOrderRate = calcCartToOrderRate(a.addToCartCount, a.ordersCount);
+  const bCartOrderRate = calcCartToOrderRate(b.addToCartCount, b.ordersCount);
+
   const checks = [
     bProfit - aProfit,
     bRoi - aRoi,
     numberOrZero(b.revenueCents) - numberOrZero(a.revenueCents),
     numberOrZero(b.ordersCount) - numberOrZero(a.ordersCount),
+    bCartOrderRate - aCartOrderRate,
+    bAddRate - aAddRate,
+    numberOrZero(b.addToCartCount) - numberOrZero(a.addToCartCount),
     bRoas - aRoas,
     numberOrZero(b.clicksCount) - numberOrZero(a.clicksCount),
     numberOrZero(a.costCents) - numberOrZero(b.costCents),
@@ -337,6 +429,7 @@ function buildChartRows(events, bucket, campaignCostCents) {
       map.set(key, {
         date: key,
         clicks: 0,
+        addToCarts: 0,
         orders: 0,
         revenueCents: 0,
         profitCents: 0,
@@ -347,6 +440,10 @@ function buildChartRows(events, bucket, campaignCostCents) {
 
     if (event.type === "click") {
       row.clicks += 1;
+    }
+
+    if (event.type === "add_to_cart") {
+      row.addToCarts += 1;
     }
 
     if (event.type === "purchase") {
@@ -366,6 +463,7 @@ function buildChartRows(events, bucket, campaignCostCents) {
 }
 
 function getMetricLabel(metric) {
+  if (metric === "addToCarts") return "Add-to-Carts";
   if (metric === "orders") return "Orders";
   if (metric === "revenueCents") return "Revenue";
   if (metric === "profitCents") return "Profit";
@@ -373,7 +471,7 @@ function getMetricLabel(metric) {
   return "Clicks";
 }
 
-function getCampaignInsight(campaign, rangeStats) {
+function getBasicCampaignInsight(campaign, rangeStats) {
   const clicks = numberOrZero(rangeStats?.clicks);
   const orders = numberOrZero(rangeStats?.orders);
   const revenueCents = numberOrZero(rangeStats?.revenueCents);
@@ -434,6 +532,76 @@ function getCampaignInsight(campaign, rangeStats) {
   };
 }
 
+function getProCampaignInsight(campaign, rangeStats) {
+  const clicks = numberOrZero(rangeStats?.clicks);
+  const addToCarts = numberOrZero(rangeStats?.addToCarts);
+  const orders = numberOrZero(rangeStats?.orders);
+  const profitCents = numberOrZero(rangeStats?.profitCents);
+  const addToCartRate = rangeStats?.addToCartRate ?? 0;
+  const cartToOrderRate = rangeStats?.cartToOrderRate ?? 0;
+
+  if (clicks < 10 && addToCarts === 0 && orders === 0) {
+    return {
+      tone: "info",
+      title: "Pro analysis is waiting for more data",
+      message:
+        "The Pro funnel becomes useful after more clicks, cart actions and orders. Keep this campaign running until the pattern is clearer.",
+    };
+  }
+
+  if (clicks >= 10 && addToCarts === 0) {
+    return {
+      tone: "critical",
+      title: "Traffic is not turning into cart intent",
+      message:
+        "This campaign creates clicks, but visitors are not adding products to cart. Check the product page, product images, price, offer and above-the-fold message.",
+    };
+  }
+
+  if (addToCarts > 0 && orders === 0) {
+    return {
+      tone: "warning",
+      title: "Cart intent exists, but checkout is not converting",
+      message:
+        "People are adding products to cart, but no orders are attributed yet. Check shipping costs, trust signals, checkout friction and payment options.",
+    };
+  }
+
+  if (addToCartRate >= 0.08 && cartToOrderRate < 0.2 && addToCarts >= 5) {
+    return {
+      tone: "warning",
+      title: "Strong product interest, weak checkout conversion",
+      message:
+        "This campaign creates real cart intent, but too few carts become orders. The ad may be good — the checkout, shipping or offer may need work.",
+    };
+  }
+
+  if (orders > 0 && profitCents > 0 && cartToOrderRate >= 0.2) {
+    return {
+      tone: "success",
+      title: "Pro signal: scalable campaign",
+      message:
+        "This campaign creates clicks, cart intent and profitable orders. This is the type of campaign worth repeating, testing with more budget or turning into a template.",
+    };
+  }
+
+  if (orders > 0 && profitCents < 0) {
+    return {
+      tone: "warning",
+      title: "Orders are coming in, but profit is weak",
+      message:
+        "The funnel works, but the economics are not strong yet. Check campaign cost, product margin and average order value before scaling.",
+    };
+  }
+
+  return {
+    tone: "info",
+    title: "Pro funnel is tracking",
+    message:
+      "WhatSells is reading the full path from click to cart to order. More data will make the recommendation sharper.",
+  };
+}
+
 // ----------------------
 // Loader
 // ----------------------
@@ -444,13 +612,17 @@ export async function loader({ request, params }) {
       process.env.SHOPIFY_APP_URL ||
       "https://app.whatsells.dev";
 
-    const { session } = await authenticate.admin(request);
+    const { session, admin } = await authenticate.admin(request);
     const shop = session.shop;
     const id = String(params.id || "").trim();
 
     if (!id) {
       throw new Response("Missing campaign id", { status: 400 });
     }
+
+    const plan = await getShopPlan({ shop, admin });
+    const isPro = isProPlan(plan);
+    const campaignLimit = getCampaignLimit(plan);
 
     const url = new URL(request.url);
     const range = normalizeRange(url.searchParams.get("range"));
@@ -468,6 +640,7 @@ export async function loader({ request, params }) {
         targetUrl: true,
         costCents: true,
         clicksCount: true,
+        addToCartCount: true,
         revenueCents: true,
         ordersCount: true,
         notes: true,
@@ -492,6 +665,8 @@ export async function loader({ request, params }) {
       allCampaigns,
       clicks7d,
       clicks30d,
+      addToCarts7d,
+      addToCarts30d,
     ] = await Promise.all([
       db.event.findMany({
         where: eventWhere,
@@ -532,6 +707,7 @@ export async function loader({ request, params }) {
           name: true,
           costCents: true,
           clicksCount: true,
+          addToCartCount: true,
           revenueCents: true,
           ordersCount: true,
           createdAt: true,
@@ -553,10 +729,31 @@ export async function loader({ request, params }) {
           createdAt: { gte: getRangeStart("30d") },
         },
       }),
+
+      db.event.count({
+        where: {
+          campaignId: campaign.id,
+          type: "add_to_cart",
+          createdAt: { gte: getRangeStart("7d") },
+        },
+      }),
+
+      db.event.count({
+        where: {
+          campaignId: campaign.id,
+          type: "add_to_cart",
+          createdAt: { gte: getRangeStart("30d") },
+        },
+      }),
     ]);
 
     const rangeClicks = events.filter((event) => event.type === "click").length;
-    const rangeOrders = events.filter((event) => event.type === "purchase").length;
+    const rangeAddToCarts = events.filter(
+      (event) => event.type === "add_to_cart",
+    ).length;
+    const rangeOrders = events.filter(
+      (event) => event.type === "purchase",
+    ).length;
 
     const rangeRevenueCents = events.reduce((sum, event) => {
       if (event.type !== "purchase") return sum;
@@ -568,6 +765,16 @@ export async function loader({ request, params }) {
 
     const conversionRate = calcConversionRate(
       campaign.clicksCount,
+      campaign.ordersCount,
+    );
+
+    const addToCartRate = calcAddToCartRate(
+      campaign.clicksCount,
+      campaign.addToCartCount,
+    );
+
+    const cartToOrderRate = calcCartToOrderRate(
+      campaign.addToCartCount,
       campaign.ordersCount,
     );
 
@@ -586,6 +793,14 @@ export async function loader({ request, params }) {
 
     const rangeProfitCents = calcProfit(campaign.costCents, rangeRevenueCents);
     const rangeConversionRate = calcConversionRate(rangeClicks, rangeOrders);
+    const rangeAddToCartRate = calcAddToCartRate(
+      rangeClicks,
+      rangeAddToCarts,
+    );
+    const rangeCartToOrderRate = calcCartToOrderRate(
+      rangeAddToCarts,
+      rangeOrders,
+    );
     const rangeRoi = calcRoi(campaign.costCents, rangeRevenueCents);
     const rangeRoas = calcRoas(campaign.costCents, rangeRevenueCents);
 
@@ -598,12 +813,25 @@ export async function loader({ request, params }) {
       range,
       rangeLabel: getRangeLabel(range),
       bucket,
+      plan: {
+        label: getPlanLabel(plan),
+        isPro,
+        isBasic: isBasicPlan(plan),
+        campaignLimit,
+        upgradeUrl: plan.upgradeUrl,
+        basicUrl: plan.basicUrl,
+        proUrl: plan.proUrl,
+      },
       campaign: {
         ...campaign,
         clicks7d,
         clicks30d,
+        addToCarts7d,
+        addToCarts30d,
         profitCents,
         conversionRate,
+        addToCartRate,
+        cartToOrderRate,
         averageOrderValueCents,
         roi,
         roas,
@@ -613,10 +841,13 @@ export async function loader({ request, params }) {
       },
       rangeStats: {
         clicks: rangeClicks,
+        addToCarts: rangeAddToCarts,
         orders: rangeOrders,
         revenueCents: rangeRevenueCents,
         profitCents: rangeProfitCents,
         conversionRate: rangeConversionRate,
+        addToCartRate: rangeAddToCartRate,
+        cartToOrderRate: rangeCartToOrderRate,
         roi: rangeRoi,
         roas: rangeRoas,
       },
@@ -636,6 +867,15 @@ export async function loader({ request, params }) {
       range: "30d",
       rangeLabel: "Last 30 days",
       bucket: "day",
+      plan: {
+        label: "Free",
+        isPro: false,
+        isBasic: false,
+        campaignLimit: FREE_CAMPAIGN_LIMIT,
+        upgradeUrl: "",
+        basicUrl: "",
+        proUrl: "",
+      },
       campaign: null,
       rangeStats: null,
       chartRows: [],
@@ -648,26 +888,39 @@ export async function loader({ request, params }) {
 // ----------------------
 // Small UI components
 // ----------------------
-function KpiCard({ label, value, helpText }) {
+function KpiCard({ label, value, helpText, highlight = false }) {
+  const border = highlight ? "1px solid #9f7aea" : "1px solid transparent";
+  const background = highlight
+    ? "linear-gradient(135deg, #f5f0ff 0%, #ffffff 70%)"
+    : "#ffffff";
+
   return (
     <div style={{ minWidth: 170, flex: 1 }}>
-      <Card>
-        <BlockStack gap="100">
-          <Text as="p" tone="subdued">
-            {label}
-          </Text>
-
-          <Text variant="headingLg" as="p">
-            {value}
-          </Text>
-
-          {helpText ? (
+      <div
+        style={{
+          border,
+          borderRadius: 14,
+          background,
+        }}
+      >
+        <Card>
+          <BlockStack gap="100">
             <Text as="p" tone="subdued">
-              {helpText}
+              {label}
             </Text>
-          ) : null}
-        </BlockStack>
-      </Card>
+
+            <Text variant="headingLg" as="p">
+              {value}
+            </Text>
+
+            {helpText ? (
+              <Text as="p" tone="subdued">
+                {helpText}
+              </Text>
+            ) : null}
+          </BlockStack>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -680,7 +933,62 @@ function MetricButton({ active, children, onClick }) {
   );
 }
 
-function ChartTable({ rows }) {
+function ProPanel({ children }) {
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        padding: 2,
+        background:
+          "linear-gradient(135deg, #111827 0%, #4c1d95 45%, #16a34a 100%)",
+      }}
+    >
+      <div
+        style={{
+          borderRadius: 16,
+          background: "#ffffff",
+          padding: 16,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function LockedProPanel({ plan }) {
+  return (
+    <Banner tone="info">
+      <BlockStack gap="200">
+        <InlineStack gap="200" wrap>
+          <Badge tone="attention">Pro Analytics locked</Badge>
+          <Text as="p" fontWeight="semibold">
+            Unlock the full click → add-to-cart → order funnel.
+          </Text>
+        </InlineStack>
+
+        <Text as="p">
+          Your current plan shows campaign results like clicks, orders, revenue,
+          ROI and ROAS. Pro Analytics adds cart intent, add-to-cart rate,
+          cart-to-order rate and sharper campaign diagnosis.
+        </Text>
+
+        {plan?.proUrl || plan?.upgradeUrl ? (
+          <Button
+            variant="primary"
+            onClick={() => {
+              window.open(plan.proUrl || plan.upgradeUrl, "_top");
+            }}
+          >
+            Upgrade to Pro Analytics
+          </Button>
+        ) : null}
+      </BlockStack>
+    </Banner>
+  );
+}
+
+function ChartTable({ rows, showProColumns }) {
   return (
     <Card>
       <BlockStack gap="300">
@@ -689,23 +997,52 @@ function ChartTable({ rows }) {
         </Text>
 
         <Text as="p" tone="subdued">
-          A simple breakdown of clicks, orders, revenue and profit for the
-          selected time range.
+          {showProColumns
+            ? "Pro breakdown of clicks, add-to-carts, orders, revenue and profit."
+            : "A simple breakdown of clicks, orders, revenue and profit for the selected time range."}
         </Text>
 
         <DataTable
-          columnContentTypes={["text", "numeric", "numeric", "text", "text"]}
-          headings={["Period", "Clicks", "Orders", "Revenue", "Profit"]}
+          columnContentTypes={
+            showProColumns
+              ? ["text", "numeric", "numeric", "numeric", "text", "text"]
+              : ["text", "numeric", "numeric", "text", "text"]
+          }
+          headings={
+            showProColumns
+              ? [
+                  "Period",
+                  "Clicks",
+                  "Add-to-Carts",
+                  "Orders",
+                  "Revenue",
+                  "Profit",
+                ]
+              : ["Period", "Clicks", "Orders", "Revenue", "Profit"]
+          }
           rows={
             rows.length
-              ? rows.map((row) => [
-                  formatDateTime(row.date),
-                  String(row.clicks),
-                  String(row.orders),
-                  formatMoneyFromCents(row.revenueCents),
-                  formatMoneyFromCents(row.profitCents),
-                ])
-              : [["—", "—", "—", "—", "—"]]
+              ? rows.map((row) =>
+                  showProColumns
+                    ? [
+                        formatDateTime(row.date),
+                        String(row.clicks),
+                        String(row.addToCarts ?? 0),
+                        String(row.orders),
+                        formatMoneyFromCents(row.revenueCents),
+                        formatMoneyFromCents(row.profitCents),
+                      ]
+                    : [
+                        formatDateTime(row.date),
+                        String(row.clicks),
+                        String(row.orders),
+                        formatMoneyFromCents(row.revenueCents),
+                        formatMoneyFromCents(row.profitCents),
+                      ],
+                )
+              : showProColumns
+                ? [["—", "—", "—", "—", "—", "—"]]
+                : [["—", "—", "—", "—", "—"]]
           }
         />
       </BlockStack>
@@ -718,11 +1055,12 @@ function ChartTable({ rows }) {
 // ----------------------
 export default function CampaignDetails() {
   const location = useLocation();
-    const navigate = useNavigate();
+  const navigate = useNavigate();
 
   const {
     loadError,
     campaign,
+    plan,
     range,
     rangeLabel,
     bucket,
@@ -732,8 +1070,16 @@ export default function CampaignDetails() {
     recentEvents,
   } = useLoaderData();
 
+  const isPro = Boolean(plan?.isPro);
+
   const [metric, setMetric] = useState("clicks");
   const [copyStatus, setCopyStatus] = useState("");
+  const [costInput, setCostInput] = useState(
+  formatCostInputFromCents(campaign?.costCents || 0),
+);
+const [costUpdating, setCostUpdating] = useState(false);
+const [costUpdateStatus, setCostUpdateStatus] = useState("");
+const [costUpdateError, setCostUpdateError] = useState("");
 
   useEffect(() => {
     if (range !== "live") return;
@@ -744,6 +1090,11 @@ export default function CampaignDetails() {
 
     return () => window.clearInterval(interval);
   }, [range, navigate, location.pathname, location.search]);
+  useEffect(() => {
+  if (!campaign) return;
+
+  setCostInput(formatCostInputFromCents(campaign.costCents || 0));
+}, [campaign?.id, campaign?.costCents]);
 
   if (loadError || !campaign) {
     return (
@@ -771,20 +1122,26 @@ export default function CampaignDetails() {
 
   const eventRows = recentEvents.map((event) => [
     formatDateTime(event.createdAt),
-    event.type === "purchase" ? "order" : event.type,
+    event.type === "purchase"
+      ? "order"
+      : event.type === "add_to_cart"
+        ? "add-to-cart"
+        : event.type,
     event.referer || "—",
     event.lang || "—",
     event.orderId || "—",
     event.valueCents != null ? formatMoneyFromCents(event.valueCents) : "—",
   ]);
 
-const rankingTone = campaign.isTopCampaign
-  ? "success"
-  : campaign.needsAttention
-    ? "attention"
-    : "info";
+  const rankingTone = campaign.isTopCampaign
+    ? "success"
+    : campaign.needsAttention
+      ? "attention"
+      : "info";
 
-const campaignInsight = getCampaignInsight(campaign, rangeStats);
+  const campaignInsight = isPro
+    ? getProCampaignInsight(campaign, rangeStats)
+    : getBasicCampaignInsight(campaign, rangeStats);
 
   async function copyTrackingLink() {
     const ok = await safeCopy(campaign.goUrl);
@@ -798,326 +1155,606 @@ const campaignInsight = getCampaignInsight(campaign, rangeStats);
   function changeRange(nextRange) {
     navigate(buildRangeUrl(campaign.id, nextRange, location.search));
   }
+  async function updateCampaignCost() {
+  setCostUpdateStatus("");
+  setCostUpdateError("");
+
+  if (!isPro) {
+    setCostUpdateError(
+      "Editing campaign costs over time is available in Pro Analytics.",
+    );
+    return;
+  }
+
+  setCostUpdating(true);
+
+  try {
+    const res = await fetch("/api/campaigns", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: campaign.id,
+        cost: costInput,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(
+        data?.error || `Could not update campaign cost (${res.status})`,
+      );
+    }
+
+    setCostUpdateStatus(
+      data?.message ||
+        "Campaign cost updated. Profit, ROI and ROAS were recalculated.",
+    );
+
+    navigate(location.pathname + location.search);
+  } catch (error) {
+    setCostUpdateError(
+      error?.message || "Could not update campaign cost.",
+    );
+  } finally {
+    setCostUpdating(false);
+  }
+}
 
   return (
-    <Page
-      title={campaign.name}
-      subtitle={`Tracking performance · ${campaign.sourceType}`}
-      backAction={{ content: "Dashboard", url: "/app" }}
-    >
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <InlineStack align="space-between" gap="400" wrap>
-                <BlockStack gap="150">
-                  <Text as="p" tone="subdued">
-                    Shopify store: {campaign.shop}
-                  </Text>
+ <Page
+  title={campaign.name}
+  subtitle={`Tracking performance · ${campaign.sourceType}`}
+  backAction={{ content: "Dashboard", url: "/app" }}
+>
+  <Layout>
+    <Layout.Section>
+      <Card>
+        <BlockStack gap="400">
+          <InlineStack align="space-between" gap="400" wrap>
+            <BlockStack gap="150">
+              <Text as="p" tone="subdued">
+                Shopify store: {campaign.shop}
+              </Text>
 
-                  <Text variant="headingLg" as="h1">
-                    {campaign.name}
-                  </Text>
-
-                  <InlineStack gap="200">
-                    <Badge
-                      tone={
-                        campaign.status === "active" ? "success" : "attention"
-                      }
-                    >
-                      {campaign.status}
-                    </Badge>
-
-                    <Badge>{campaign.sourceType}</Badge>
-
-                    <Badge tone={rankingTone}>{campaign.performanceLabel}</Badge>
-                  </InlineStack>
-
-                  {campaign.rank ? (
-                    <Text as="p" tone="subdued">
-                      Rank #{campaign.rank} of {campaign.totalRankedCampaigns}
-                    </Text>
-                  ) : (
-                    <Text as="p" tone="subdued">
-                      Waiting for more data before ranking this campaign.
-                    </Text>
-                  )}
-                </BlockStack>
-
-                <BlockStack gap="150">
-                  <Button url={campaign.goUrl} external>
-                    Open tracking link
-                  </Button>
-
-                  <Button onClick={copyTrackingLink}>
-                    Copy tracking link
-                  </Button>
-
-                  {copyStatus ? (
-                    <Text as="p" tone="subdued">
-                      {copyStatus}
-                    </Text>
-                  ) : null}
-                </BlockStack>
-              </InlineStack>
-
-              <Card>
-                <BlockStack gap="200">
-                  <Text variant="headingSm" as="h3">
-                    Tracking link
-                  </Text>
-
-                  <Text as="p" tone="subdued">
-                    Customers who open this link are redirected to your
-                    destination URL. WhatSells uses the link to attribute clicks
-                    and orders to this campaign.
-                  </Text>
-
-                  <Text as="p">{campaign.goUrl}</Text>
-                </BlockStack>
-              </Card>
+              <Text variant="headingLg" as="h1">
+                {campaign.name}
+              </Text>
 
               <InlineStack gap="200" wrap>
-                <Button
-                  variant={range === "live" ? "primary" : "secondary"}
-                  onClick={() => changeRange("live")}
+                <Badge
+                  tone={
+                    campaign.status === "active" ? "success" : "attention"
+                  }
                 >
-                  Live
-                </Button>
+                  {campaign.status}
+                </Badge>
 
-                <Button
-                  variant={range === "24h" ? "primary" : "secondary"}
-                  onClick={() => changeRange("24h")}
-                >
-                  24h
-                </Button>
+                <Badge>{campaign.sourceType}</Badge>
 
-                <Button
-                  variant={range === "7d" ? "primary" : "secondary"}
-                  onClick={() => changeRange("7d")}
-                >
-                  7 days
-                </Button>
+                <Badge tone={rankingTone}>
+                  {campaign.performanceLabel}
+                </Badge>
 
-                <Button
-                  variant={range === "30d" ? "primary" : "secondary"}
-                  onClick={() => changeRange("30d")}
-                >
-                  30 days
-                </Button>
-
-                <Button
-                  variant={range === "all" ? "primary" : "secondary"}
-                  onClick={() => changeRange("all")}
-                >
-                  All time
-                </Button>
+                <Badge tone={isPro ? "success" : getPlanTone(plan)}>
+                  {plan?.label || "Free"}
+                </Badge>
               </InlineStack>
+
+              {campaign.rank ? (
+                <Text as="p" tone="subdued">
+                  Rank #{campaign.rank} of {campaign.totalRankedCampaigns}
+                </Text>
+              ) : (
+                <Text as="p" tone="subdued">
+                  Waiting for more data before ranking this campaign.
+                </Text>
+              )}
+            </BlockStack>
+
+            <BlockStack gap="150">
+              <Button url={campaign.goUrl} external>
+                Open tracking link
+              </Button>
+
+              <Button onClick={copyTrackingLink}>
+                Copy tracking link
+              </Button>
+
+              {copyStatus ? (
+                <Text as="p" tone="subdued">
+                  {copyStatus}
+                </Text>
+              ) : null}
+            </BlockStack>
+          </InlineStack>
+
+          <Card>
+            <BlockStack gap="200">
+              <Text variant="headingSm" as="h3">
+                Tracking link
+              </Text>
 
               <Text as="p" tone="subdued">
-                Current filter: {rangeLabel}
-                {range === "live" ? " · auto refresh every 30 seconds" : ""}
+                Customers who open this link are redirected to your destination
+                URL. WhatSells uses the link to attribute clicks and orders to
+                this campaign.
               </Text>
+
+              <Text as="p">{campaign.goUrl}</Text>
             </BlockStack>
           </Card>
-        </Layout.Section>
 
-        <Layout.Section>
-          <InlineStack gap="300" wrap>
-            <KpiCard
-              label="Clicks"
-              value={String(rangeStats.clicks)}
-              helpText={rangeLabel}
-            />
+          <InlineStack gap="200" wrap>
+            <Button
+              variant={range === "live" ? "primary" : "secondary"}
+              onClick={() => changeRange("live")}
+            >
+              Live
+            </Button>
 
-            <KpiCard
-              label="Orders"
-              value={String(rangeStats.orders)}
-              helpText={rangeLabel}
-            />
+            <Button
+              variant={range === "24h" ? "primary" : "secondary"}
+              onClick={() => changeRange("24h")}
+            >
+              24h
+            </Button>
 
-            <KpiCard
-              label="Conversion"
-              value={formatPercent(rangeStats.conversionRate)}
-              helpText="Orders divided by clicks"
-            />
+            <Button
+              variant={range === "7d" ? "primary" : "secondary"}
+              onClick={() => changeRange("7d")}
+            >
+              7 days
+            </Button>
 
-            <KpiCard
-              label="Revenue"
-              value={formatMoneyFromCents(rangeStats.revenueCents)}
-              helpText={rangeLabel}
-            />
+            <Button
+              variant={range === "30d" ? "primary" : "secondary"}
+              onClick={() => changeRange("30d")}
+            >
+              30 days
+            </Button>
 
-            <KpiCard
-              label="Profit"
-              value={formatMoneyFromCents(rangeStats.profitCents)}
-              helpText="Revenue minus campaign cost"
-            />
-
-            <KpiCard
-              label="ROI"
-              value={formatPercent(rangeStats.roi)}
-              helpText="Profit divided by cost"
-            />
-
-            <KpiCard
-              label="ROAS"
-              value={formatRatio(rangeStats.roas)}
-              helpText="Revenue divided by cost"
-            />
+            <Button
+              variant={range === "all" ? "primary" : "secondary"}
+              onClick={() => changeRange("all")}
+            >
+              All time
+            </Button>
           </InlineStack>
-        </Layout.Section>
-                <Layout.Section>
-          <Banner tone={campaignInsight.tone}>
+
+          <Text as="p" tone="subdued">
+            Current filter: {rangeLabel}
+            {range === "live" ? " · auto refresh every 30 seconds" : ""}
+          </Text>
+        </BlockStack>
+      </Card>
+    </Layout.Section>
+
+    <Layout.Section>
+      <InlineStack gap="300" wrap>
+        <KpiCard
+          label="Clicks"
+          value={String(rangeStats.clicks)}
+          helpText={rangeLabel}
+        />
+
+        {isPro ? (
+          <KpiCard
+            label="Add-to-Carts"
+            value={String(rangeStats.addToCarts)}
+            helpText="Pro funnel signal"
+            highlight
+          />
+        ) : null}
+
+        <KpiCard
+          label="Orders"
+          value={String(rangeStats.orders)}
+          helpText={rangeLabel}
+        />
+
+        <KpiCard
+          label="Conversion"
+          value={formatPercent(rangeStats.conversionRate)}
+          helpText="Orders divided by clicks"
+        />
+
+        {isPro ? (
+          <>
+            <KpiCard
+              label="Add-to-Cart Rate"
+              value={formatPercent(rangeStats.addToCartRate)}
+              helpText="Carts divided by clicks"
+              highlight
+            />
+
+            <KpiCard
+              label="Cart-to-Order"
+              value={formatPercent(rangeStats.cartToOrderRate)}
+              helpText="Orders divided by carts"
+              highlight
+            />
+          </>
+        ) : null}
+
+        <KpiCard
+          label="Revenue"
+          value={formatMoneyFromCents(rangeStats.revenueCents)}
+          helpText={rangeLabel}
+        />
+
+        <KpiCard
+          label="Profit"
+          value={formatMoneyFromCents(rangeStats.profitCents)}
+          helpText="Revenue minus campaign cost"
+        />
+
+        <KpiCard
+          label="ROI"
+          value={formatPercent(rangeStats.roi)}
+          helpText="Profit divided by cost"
+        />
+
+        <KpiCard
+          label="ROAS"
+          value={formatRatio(rangeStats.roas)}
+          helpText="Revenue divided by cost"
+        />
+      </InlineStack>
+    </Layout.Section>
+
+    <Layout.Section>
+      {isPro ? (
+        <ProPanel>
+          <BlockStack gap="300">
+            <InlineStack gap="200" wrap>
+              <Badge tone="success">Pro Analytics</Badge>
+
+              <Text variant="headingMd" as="h2">
+                Click → Add-to-Cart → Order funnel
+              </Text>
+            </InlineStack>
+
+            <Text as="p" tone="subdued">
+              Pro separates attention from intent. Clicks show traffic,
+              add-to-carts show buying interest, and orders show final
+              conversion.
+            </Text>
+
+            <InlineStack gap="300" wrap>
+              <KpiCard
+                label="Clicks"
+                value={String(rangeStats.clicks)}
+                helpText="Traffic"
+                highlight
+              />
+
+              <KpiCard
+                label="Add-to-Carts"
+                value={String(rangeStats.addToCarts)}
+                helpText="Buying intent"
+                highlight
+              />
+
+              <KpiCard
+                label="Orders"
+                value={String(rangeStats.orders)}
+                helpText="Final conversion"
+                highlight
+              />
+            </InlineStack>
+          </BlockStack>
+        </ProPanel>
+      ) : (
+        <LockedProPanel plan={plan} />
+      )}
+    </Layout.Section>
+
+    <Layout.Section>
+      {isPro ? (
+        <ProPanel>
+          <BlockStack gap="300">
+            <InlineStack gap="200" wrap>
+              <Badge tone="success">Pro Cost Control</Badge>
+
+              <Text variant="headingMd" as="h2">
+                Adjust campaign costs over time
+              </Text>
+            </InlineStack>
+
+            <Text as="p" tone="subdued">
+              Update the campaign cost when TikTok, Meta, Google, influencer
+              or offline printing costs change. WhatSells recalculates profit,
+              ROI, ROAS and campaign diagnosis from the new cost.
+            </Text>
+
+            <InlineStack gap="300" wrap align="end">
+              <div style={{ minWidth: 220 }}>
+                <TextField
+                  label="Campaign cost (€)"
+                  value={costInput}
+                  onChange={setCostInput}
+                  autoComplete="off"
+                  placeholder="e.g. 187,50"
+                  helpText="Use the current total cost for this campaign."
+                />
+              </div>
+
+              <Button
+                variant="primary"
+                onClick={updateCampaignCost}
+                loading={costUpdating}
+              >
+                Update cost
+              </Button>
+            </InlineStack>
+
+            {costUpdateStatus ? (
+              <Banner tone="success">
+                <Text as="p">{costUpdateStatus}</Text>
+              </Banner>
+            ) : null}
+
+            {costUpdateError ? (
+              <Banner tone="critical">
+                <Text as="p">{costUpdateError}</Text>
+              </Banner>
+            ) : null}
+
+            <InlineStack gap="300" wrap>
+              <KpiCard
+                label="Current cost"
+                value={formatMoneyFromCents(campaign.costCents || 0)}
+                helpText="Used for profit, ROI and ROAS"
+                highlight
+              />
+
+              <KpiCard
+                label="Profit"
+                value={formatMoneyFromCents(campaign.profitCents || 0)}
+                helpText="Revenue minus campaign cost"
+                highlight
+              />
+
+              <KpiCard
+                label="ROI"
+                value={formatPercent(campaign.roi)}
+                helpText="Profit divided by cost"
+                highlight
+              />
+
+              <KpiCard
+                label="ROAS"
+                value={formatRatio(campaign.roas)}
+                helpText="Revenue divided by cost"
+                highlight
+              />
+            </InlineStack>
+          </BlockStack>
+        </ProPanel>
+      ) : (
+        <Banner tone="info">
+          <BlockStack gap="200">
+            <InlineStack gap="200" wrap>
+              <Badge tone="attention">Pro Cost Control locked</Badge>
+
+              <Text as="p" fontWeight="semibold">
+                Adjust campaign costs over time with Pro Analytics.
+              </Text>
+            </InlineStack>
+
+            <Text as="p">
+              Your current plan uses the campaign cost entered at creation.
+              Pro lets you update costs later when ads keep spending or offline
+              material gets printed again.
+            </Text>
+
+            {plan?.proUrl || plan?.upgradeUrl ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  window.open(plan.proUrl || plan.upgradeUrl, "_top");
+                }}
+              >
+                Upgrade to Pro Analytics
+              </Button>
+            ) : null}
+          </BlockStack>
+        </Banner>
+      )}
+    </Layout.Section>
+
+    <Layout.Section>
+      <Banner tone={campaignInsight.tone}>
+        <BlockStack gap="100">
+          <Text variant="headingSm" as="h2">
+            {isPro ? "Pro campaign diagnosis" : "Campaign insight"}:{" "}
+            {campaignInsight.title}
+          </Text>
+
+          <Text as="p">{campaignInsight.message}</Text>
+        </BlockStack>
+      </Banner>
+    </Layout.Section>
+
+    <Layout.Section>
+      <Card>
+        <BlockStack gap="400">
+          <InlineStack align="space-between" gap="300" wrap>
             <BlockStack gap="100">
-              <Text variant="headingSm" as="h2">
-                Campaign insight: {campaignInsight.title}
-              </Text>
-
-              <Text as="p">{campaignInsight.message}</Text>
-            </BlockStack>
-          </Banner>
-        </Layout.Section>
-
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <InlineStack align="space-between" gap="300" wrap>
-                <BlockStack gap="100">
-                  <Text variant="headingMd" as="h2">
-                    {getMetricLabel(metric)} over time
-                  </Text>
-
-                  <Text as="p" tone="subdued">
-                    {rangeLabel}
-                  </Text>
-                </BlockStack>
-
-                <InlineStack gap="200" wrap>
-                  <MetricButton
-                    active={metric === "clicks"}
-                    onClick={() => setMetric("clicks")}
-                  >
-                    Clicks
-                  </MetricButton>
-
-                  <MetricButton
-                    active={metric === "orders"}
-                    onClick={() => setMetric("orders")}
-                  >
-                    Orders
-                  </MetricButton>
-
-                  <MetricButton
-                    active={metric === "revenueCents"}
-                    onClick={() => setMetric("revenueCents")}
-                  >
-                    Revenue
-                  </MetricButton>
-
-                  <MetricButton
-                    active={metric === "profitCents"}
-                    onClick={() => setMetric("profitCents")}
-                  >
-                    Profit
-                  </MetricButton>
-                </InlineStack>
-              </InlineStack>
-
-              <CampaignPerformanceChart
-                data={chartRows}
-                metric={metric}
-                bucket={bucket}
-              />
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-
-        <Layout.Section>
-          <ChartTable rows={chartRows} />
-        </Layout.Section>
-
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="300">
-              <BlockStack gap="100">
-                <Text variant="headingMd" as="h2">
-                  Attributed orders
-                </Text>
-
-                <Text as="p" tone="subdued">
-                  Orders tracked through this campaign link.
-                </Text>
-              </BlockStack>
-
-              <DataTable
-                columnContentTypes={["text", "text", "text", "text"]}
-                headings={["Time", "Order", "Revenue", "Currency"]}
-                rows={
-                  attributedOrderRows.length
-                    ? attributedOrderRows
-                    : [
-                        [
-                          "No attributed orders yet",
-                          "Orders appear here after checkout through a WhatSells tracking link",
-                          "—",
-                          "—",
-                        ],
-                      ]
-                }
-              />
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="300">
               <Text variant="headingMd" as="h2">
-                Recent tracking events
+                {getMetricLabel(metric)} over time
               </Text>
 
-              <DataTable
-                columnContentTypes={[
-                  "text",
-                  "text",
-                  "text",
-                  "text",
-                  "text",
-                  "text",
-                ]}
-                headings={[
-                  "Time",
-                  "Type",
-                  "Referer",
-                  "Language",
-                  "Order",
-                  "Value",
-                ]}
-                rows={
-                  eventRows.length
-                    ? eventRows
-                    : [["—", "—", "—", "—", "—", "—"]]
-                }
-              />
+              <Text as="p" tone="subdued">
+                {rangeLabel}
+              </Text>
             </BlockStack>
-          </Card>
-        </Layout.Section>
 
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text variant="headingMd" as="h2">
-                Campaign information
-              </Text>
+            <InlineStack gap="200" wrap>
+              <MetricButton
+                active={metric === "clicks"}
+                onClick={() => setMetric("clicks")}
+              >
+                Clicks
+              </MetricButton>
 
+              {isPro ? (
+                <MetricButton
+                  active={metric === "addToCarts"}
+                  onClick={() => setMetric("addToCarts")}
+                >
+                  Add-to-Carts
+                </MetricButton>
+              ) : null}
+
+              <MetricButton
+                active={metric === "orders"}
+                onClick={() => setMetric("orders")}
+              >
+                Orders
+              </MetricButton>
+
+              <MetricButton
+                active={metric === "revenueCents"}
+                onClick={() => setMetric("revenueCents")}
+              >
+                Revenue
+              </MetricButton>
+
+              <MetricButton
+                active={metric === "profitCents"}
+                onClick={() => setMetric("profitCents")}
+              >
+                Profit
+              </MetricButton>
+            </InlineStack>
+          </InlineStack>
+
+          <CampaignPerformanceChart
+            data={chartRows}
+            metric={metric}
+            bucket={bucket}
+          />
+        </BlockStack>
+      </Card>
+    </Layout.Section>
+
+    <Layout.Section>
+      <ChartTable rows={chartRows} showProColumns={isPro} />
+    </Layout.Section>
+
+    <Layout.Section>
+      <Card>
+        <BlockStack gap="300">
+          <BlockStack gap="100">
+            <Text variant="headingMd" as="h2">
+              Attributed orders
+            </Text>
+
+            <Text as="p" tone="subdued">
+              Orders tracked through this campaign link.
+            </Text>
+          </BlockStack>
+
+          <DataTable
+            columnContentTypes={["text", "text", "text", "text"]}
+            headings={["Time", "Order", "Revenue", "Currency"]}
+            rows={
+              attributedOrderRows.length
+                ? attributedOrderRows
+                : [
+                    [
+                      "No attributed orders yet",
+                      "Orders appear here after checkout through a WhatSells tracking link",
+                      "—",
+                      "—",
+                    ],
+                  ]
+            }
+          />
+        </BlockStack>
+      </Card>
+    </Layout.Section>
+
+    <Layout.Section>
+      <Card>
+        <BlockStack gap="300">
+          <Text variant="headingMd" as="h2">
+            Recent tracking events
+          </Text>
+
+          <DataTable
+            columnContentTypes={[
+              "text",
+              "text",
+              "text",
+              "text",
+              "text",
+              "text",
+            ]}
+            headings={[
+              "Time",
+              "Type",
+              "Referer",
+              "Language",
+              "Order",
+              "Value",
+            ]}
+            rows={
+              eventRows.length
+                ? eventRows
+                : [["—", "—", "—", "—", "—", "—"]]
+            }
+          />
+        </BlockStack>
+      </Card>
+    </Layout.Section>
+
+    <Layout.Section>
+      <Card>
+        <BlockStack gap="400">
+          <Text variant="headingMd" as="h2">
+            Campaign information
+          </Text>
               <DataTable
                 columnContentTypes={["text", "text"]}
                 headings={["Metric", "Value"]}
                 rows={[
+                  ["Plan", plan?.label || "Free"],
                   ["Clicks last 7 days", String(campaign.clicks7d ?? 0)],
                   ["Clicks last 30 days", String(campaign.clicks30d ?? 0)],
+                  ...(isPro
+                    ? [
+                        [
+                          "Add-to-Carts last 7 days",
+                          String(campaign.addToCarts7d ?? 0),
+                        ],
+                        [
+                          "Add-to-Carts last 30 days",
+                          String(campaign.addToCarts30d ?? 0),
+                        ],
+                      ]
+                    : []),
                   ["Clicks", String(campaign.clicksCount ?? 0)],
+                  ...(isPro
+                    ? [
+                        [
+                          "Add-to-Carts",
+                          String(campaign.addToCartCount ?? 0),
+                        ],
+                        [
+                          "Add-to-Cart Rate",
+                          formatPercent(campaign.addToCartRate),
+                        ],
+                        [
+                          "Cart-to-Order Rate",
+                          formatPercent(campaign.cartToOrderRate),
+                        ],
+                      ]
+                    : []),
                   ["Orders", String(campaign.ordersCount ?? 0)],
                   ["Conversion", formatPercent(campaign.conversionRate)],
                   ["Revenue", formatMoneyFromCents(campaign.revenueCents || 0)],
