@@ -7,6 +7,17 @@ import enTranslations from "@shopify/polaris/locales/en.json";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
+export async function action({ request }) {
+  const url = new URL(request.url);
+
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: `/app${url.search || ""}`,
+    },
+  });
+}
+
 export default function App() {
   return (
     <html lang="en">
