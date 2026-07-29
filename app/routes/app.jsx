@@ -2,6 +2,7 @@ import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
+import { useI18n } from "../i18n-context";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -12,12 +13,14 @@ export const loader = async ({ request }) => {
 
 export default function App() {
   const { apiKey } = useLoaderData();
+  const { t } = useI18n();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
-        <s-link href="/app">Dashboard</s-link>
-        <s-link href="/app/expert">Expert</s-link>
+        <s-link href="/app">{t("Dashboard")}</s-link>
+        <s-link href="/app/expert">{t("Expert")}</s-link>
+        <s-link href="/app/settings">{t("Settings")}</s-link>
       </s-app-nav>
 
       <Outlet />

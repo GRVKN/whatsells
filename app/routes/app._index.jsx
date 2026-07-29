@@ -21,7 +21,8 @@ import {
   ONBOARDING_STORAGE_KEY,
   PREPARED_ASSET_STORAGE_KEY,
 } from "../getting-started";
-import { DEFAULT_CURRENCY, formatMoneyFromCents } from "../money";
+import { DEFAULT_CURRENCY } from "../money";
+import { useI18n } from "../i18n-context";
 import { buildProductGroups } from "../product-groups";
 import {
   BASIC_CAMPAIGN_LIMIT,
@@ -53,14 +54,6 @@ import {
 // ----------------------
 // Helpers
 // ----------------------
-function formatPercent(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "—";
-  }
-
-  return `${(Number(value) * 100).toFixed(1)}%`;
-}
-
 async function safeCopy(text) {
   try {
     if (navigator.clipboard?.writeText) {
@@ -249,43 +242,67 @@ function getPlanBadgeTone(capabilities) {
   return "attention";
 }
 
-function getPlanHeadline(capabilities, campaignCount) {
+function getPlanHeadline(capabilities, campaignCount, t) {
   const planName = getPlanName(capabilities);
   const limit = getCampaignLimit(capabilities);
 
   if (limit === null) {
-    return isExpertPlan(capabilities)
-      ? "Expert Operator active · Unlimited campaigns"
-      : "Pro Analytics active · Unlimited campaigns";
+    return t(
+      isExpertPlan(capabilities)
+        ? "Expert Operator active · Unlimited campaigns"
+        : "Pro Analytics active · Unlimited campaigns",
+    );
   }
 
-  return `${planName} plan · ${campaignCount} of ${limit} campaigns used`;
+  return t("{plan} plan · {used} of {limit} campaigns used", {
+    plan: t(planName),
+    used: campaignCount,
+    limit,
+  });
 }
 
-function getPlanHelpText(capabilities, campaignCount) {
+function getPlanHelpText(capabilities, campaignCount, t) {
   const planName = getPlanName(capabilities);
   const limit = getCampaignLimit(capabilities);
   const remaining = getRemainingCampaigns(capabilities, campaignCount);
 
   if (limit === null) {
-    return isExpertPlan(capabilities)
-      ? "You can use the complete funnel plus daily Opportunity Scores, warnings and next-action recommendations."
-      : "You can create unlimited campaigns and use the complete click → add-to-cart → order funnel. Expert adds daily decisions and Opportunity Scores.";
+    return t(
+      isExpertPlan(capabilities)
+        ? "You can use the complete funnel plus daily Opportunity Scores, warnings and next-action recommendations."
+        : "You can create unlimited campaigns and use the complete click → add-to-cart → order funnel. Expert adds daily decisions and Opportunity Scores.",
+    );
   }
 
   if (remaining <= 0 && planName === "Free") {
-    return `You have used your ${FREE_CAMPAIGN_LIMIT} free campaigns. Upgrade to Basic for up to ${BASIC_CAMPAIGN_LIMIT} campaigns or Pro for unlimited campaigns.`;
+    return t(
+      "You have used your {limit} free campaigns. Upgrade to Basic for up to {basicLimit} campaigns or Pro for unlimited campaigns.",
+      { limit: FREE_CAMPAIGN_LIMIT, basicLimit: BASIC_CAMPAIGN_LIMIT },
+    );
   }
 
   if (remaining <= 0 && planName === "Basic") {
-    return `You have used your ${BASIC_CAMPAIGN_LIMIT} Basic campaigns. Upgrade to Pro Analytics for unlimited campaigns and Add-to-Cart tracking.`;
+    return t(
+      "You have used your {limit} Basic campaigns. Upgrade to Pro Analytics for unlimited campaigns and Add-to-Cart tracking.",
+      { limit: BASIC_CAMPAIGN_LIMIT },
+    );
   }
 
   if (planName === "Free") {
-    return `${remaining} free campaign${remaining === 1 ? "" : "s"} remaining. Basic adds profitability analytics, time ranges and CSV export.`;
+    return t(
+      remaining === 1
+        ? "{remaining} free campaign remaining. Basic adds profitability analytics, time ranges and CSV export."
+        : "{remaining} free campaigns remaining. Basic adds profitability analytics, time ranges and CSV export.",
+      { remaining },
+    );
   }
 
-  return `${remaining} Basic campaign${remaining === 1 ? "" : "s"} remaining. Your profitability analytics and CSV export are active.`;
+  return t(
+    remaining === 1
+      ? "{remaining} Basic campaign remaining. Your profitability analytics and CSV export are active."
+      : "{remaining} Basic campaigns remaining. Your profitability analytics and CSV export are active.",
+    { remaining },
+  );
 }
 
 function getCreateButtonLabel(capabilities, campaignCount) {
@@ -363,6 +380,7 @@ function MetricCard({ label, value, helpText, infoKey }) {
 }
 
 function CampaignHighlightCard({ title, campaign, emptyText, currency }) {
+  const { t, formatMoney, formatPercent } = useI18n();
   if (!campaign) {
     return (
       <div className={styles.highlightCell}>
@@ -396,15 +414,18 @@ function CampaignHighlightCard({ title, campaign, emptyText, currency }) {
           </Text>
 
           <Text as="p" tone="subdued">
-            Campaign result: {formatMoneyFromCents(profitCents, currency)} ·
-            ROI: {formatPercent(campaign.roi)}
+            {t("Campaign result: {result} · ROI: {roi}", {
+              result: formatMoney(profitCents, currency),
+              roi: formatPercent(campaign.roi),
+            })}
           </Text>
 
           <Text as="p" tone="subdued">
-            Net revenue:{" "}
-            {formatMoneyFromCents(campaign.revenueCents || 0, currency)} ·
-            Orders: {campaign.ordersCount ?? 0} · Clicks:{" "}
-            {campaign.clicksCount ?? 0}
+            {t("Net revenue: {revenue} · Orders: {orders} · Clicks: {clicks}", {
+              revenue: formatMoney(campaign.revenueCents || 0, currency),
+              orders: campaign.ordersCount ?? 0,
+              clicks: campaign.clicksCount ?? 0,
+            })}
           </Text>
         </BlockStack>
       </Card>
@@ -413,16 +434,17 @@ function CampaignHighlightCard({ title, campaign, emptyText, currency }) {
 }
 
 function WorkflowOverview() {
+  const { t } = useI18n();
   return (
     <div className={styles.workflowGrid}>
       <div className={styles.workflowStep}>
         <span className={styles.stepNumber}>1</span>
         <BlockStack gap="100">
           <Text variant="headingSm" as="h3">
-            Choose the product
+            {t("Choose the product")}
           </Text>
           <Text as="p" tone="subdued">
-            Select the exact product directly from your Shopify catalog.
+            {t("Select the exact product directly from your Shopify catalog.")}
           </Text>
         </BlockStack>
       </div>
@@ -431,10 +453,10 @@ function WorkflowOverview() {
         <span className={styles.stepNumber}>2</span>
         <BlockStack gap="100">
           <Text variant="headingSm" as="h3">
-            Create the campaign
+            {t("Create the campaign")}
           </Text>
           <Text as="p" tone="subdued">
-            WhatSells generates a unique tracking link and QR code.
+            {t("WhatSells generates a unique tracking link and QR code.")}
           </Text>
         </BlockStack>
       </div>
@@ -443,10 +465,12 @@ function WorkflowOverview() {
         <span className={styles.stepNumber}>3</span>
         <BlockStack gap="100">
           <Text variant="headingSm" as="h3">
-            Share and measure
+            {t("Share and measure")}
           </Text>
           <Text as="p" tone="subdued">
-            Use the generated asset and watch clicks, orders and net revenue.
+            {t(
+              "Use the generated asset and watch clicks, orders and net revenue.",
+            )}
           </Text>
         </BlockStack>
       </div>
@@ -455,26 +479,28 @@ function WorkflowOverview() {
 }
 
 function EmptyCampaignState({ onCreate, onViewDemo }) {
+  const { t } = useI18n();
   return (
     <div className={styles.emptyState}>
       <BlockStack gap="300" inlineAlign="center">
         <BlockStack gap="100" inlineAlign="center">
           <Text variant="headingMd" as="h3">
-            Create your first measurable campaign
+            {t("Create your first measurable campaign")}
           </Text>
 
           <Text as="p" tone="subdued">
-            You will immediately receive a unique tracking link and QR code.
-            Demo data is available if you want to see the result first.
+            {t(
+              "You will immediately receive a unique tracking link and QR code. Demo data is available if you want to see the result first.",
+            )}
           </Text>
         </BlockStack>
 
         <InlineStack gap="200" align="center" wrap>
           <Button variant="primary" onClick={onCreate}>
-            Create first campaign
+            {t("Create first campaign")}
           </Button>
 
-          <Button onClick={onViewDemo}>View example</Button>
+          <Button onClick={onViewDemo}>{t("View example")}</Button>
         </InlineStack>
       </BlockStack>
     </div>
@@ -489,6 +515,7 @@ function PlanStatusCard({
   proUrl,
   expertUrl,
 }) {
+  const { t } = useI18n();
   const planName = getPlanName(capabilities);
   const limit = getCampaignLimit(capabilities);
   const remaining = getRemainingCampaigns(capabilities, campaignCount);
@@ -519,12 +546,12 @@ function PlanStatusCard({
             <Badge tone={getPlanBadgeTone(capabilities)}>{planName}</Badge>
 
             <Text as="p" fontWeight="semibold">
-              {getPlanHeadline(capabilities, campaignCount)}
+              {getPlanHeadline(capabilities, campaignCount, t)}
             </Text>
           </InlineStack>
 
           {isExpertPlan(capabilities) ? (
-            <Button url="/app/expert">Open daily operator</Button>
+            <Button url="/app/expert">{t("Open daily operator")}</Button>
           ) : showUpgradeButton ? (
             <Button
               variant="primary"
@@ -532,44 +559,48 @@ function PlanStatusCard({
                 window.open(nextPlanUrl, "_top");
               }}
             >
-              {getUpgradeButtonLabel(capabilities)}
+              {t(getUpgradeButtonLabel(capabilities))}
             </Button>
           ) : null}
         </InlineStack>
 
-        <Text as="p">{getPlanHelpText(capabilities, campaignCount)}</Text>
+        <Text as="p">{getPlanHelpText(capabilities, campaignCount, t)}</Text>
 
         <InlineStack gap="200" wrap>
           <Text as="p" tone="subdued">
-            Free: {FREE_CAMPAIGN_LIMIT} campaigns + core tracking
+            {t("Free: {limit} campaigns + core tracking", {
+              limit: FREE_CAMPAIGN_LIMIT,
+            })}
           </Text>
 
           <Text as="p" tone="subdued">
-            Basic: {BASIC_CAMPAIGN_LIMIT} campaigns + profitability
+            {t("Basic: {limit} campaigns + profitability", {
+              limit: BASIC_CAMPAIGN_LIMIT,
+            })}
           </Text>
 
           <Text as="p" tone="subdued">
-            Pro: unlimited + full funnel
+            {t("Pro: unlimited + full funnel")}
           </Text>
 
           <Text as="p" tone="subdued">
-            Expert: daily actions + Opportunity Scores
+            {t("Expert: daily actions + Opportunity Scores")}
           </Text>
 
           {isProPlan(capabilities) ? (
             <Text as="p" tone="subdued">
-              Add-to-Cart tracking enabled
+              {t("Add-to-Cart tracking enabled")}
             </Text>
           ) : (
             <Text as="p" tone="subdued">
-              Add-to-Cart tracking requires Pro
+              {t("Add-to-Cart tracking requires Pro")}
             </Text>
           )}
         </InlineStack>
 
         {limit !== null ? (
           <Text as="p" tone="subdued">
-            Remaining campaigns: {remaining}
+            {t("Remaining campaigns: {remaining}", { remaining })}
           </Text>
         ) : null}
       </BlockStack>
@@ -578,21 +609,23 @@ function PlanStatusCard({
 }
 
 function LockedBasicAnalytics({ basicUrl, upgradeUrl }) {
+  const { t } = useI18n();
   return (
     <Banner tone="info">
       <BlockStack gap="200">
         <InlineStack gap="200" wrap>
-          <Badge tone="attention">Basic analytics locked</Badge>
+          <Badge tone="attention">{t("Basic analytics locked")}</Badge>
 
           <Text as="p" fontWeight="semibold">
-            See whether a campaign actually earns more than it costs.
+            {t("See whether a campaign actually earns more than it costs.")}
           </Text>
         </InlineStack>
 
         <Text as="p">
-          Basic adds campaign cost, campaign result, ROI, ROAS, time-range
-          charts, rankings, order details and CSV export for up to{" "}
-          {BASIC_CAMPAIGN_LIMIT} campaigns.
+          {t(
+            "Basic adds campaign cost, campaign result, ROI, ROAS, time-range charts, rankings, order details and CSV export for up to {limit} campaigns.",
+            { limit: BASIC_CAMPAIGN_LIMIT },
+          )}
         </Text>
 
         {basicUrl || upgradeUrl ? (
@@ -600,7 +633,7 @@ function LockedBasicAnalytics({ basicUrl, upgradeUrl }) {
             variant="primary"
             onClick={() => window.open(basicUrl || upgradeUrl, "_top")}
           >
-            Upgrade to Basic
+            {t("Upgrade to Basic")}
           </Button>
         ) : null}
       </BlockStack>
@@ -617,6 +650,7 @@ export default function AppIndex() {
   const embeddedQuery = location.search || "";
   const createSectionRef = useRef(null);
   const campaignsSectionRef = useRef(null);
+  const { t, formatMoney, formatPercent } = useI18n();
 
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -673,7 +707,14 @@ export default function AppIndex() {
     setToast((prev) => ({ ...prev, active: false }));
   }, []);
 
-  const sourceOptions = useMemo(() => [...CAMPAIGN_SOURCE_OPTIONS], []);
+  const sourceOptions = useMemo(
+    () =>
+      CAMPAIGN_SOURCE_OPTIONS.map((option) => ({
+        ...option,
+        label: t(option.label),
+      })),
+    [t],
+  );
 
   const sourceLabelByValue = useMemo(() => {
     const map = {};
@@ -686,18 +727,18 @@ export default function AppIndex() {
   }, [sourceOptions]);
 
   const sourceFilterOptions = useMemo(
-    () => [{ label: "All channels", value: "all" }, ...sourceOptions],
-    [sourceOptions],
+    () => [{ label: t("All channels"), value: "all" }, ...sourceOptions],
+    [sourceOptions, t],
   );
 
   const statusFilterOptions = useMemo(
     () => [
-      { label: "All statuses", value: "all" },
-      { label: "Active", value: "active" },
-      { label: "Paused", value: "paused" },
-      { label: "Archived", value: "archived" },
+      { label: t("All statuses"), value: "all" },
+      { label: t("Active"), value: "active" },
+      { label: t("Paused"), value: "paused" },
+      { label: t("Archived"), value: "archived" },
     ],
-    [],
+    [t],
   );
 
   const rankedCampaigns = useMemo(() => {
@@ -834,7 +875,9 @@ export default function AppIndex() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data?.error || `Load failed (${res.status})`);
+        throw new Error(
+          data?.error || t("Load failed ({status})", { status: res.status }),
+        );
       }
 
       const nextCampaigns = Array.isArray(data?.campaigns)
@@ -857,13 +900,13 @@ export default function AppIndex() {
     } catch (e) {
       setErr(
         e?.message ||
-          "Could not load campaigns. Check your connection and try again.",
+          t("Could not load campaigns. Check your connection and try again."),
       );
     } finally {
       setLoading(false);
       setInitialLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const createCampaign = useCallback(async () => {
     setErr("");
@@ -879,12 +922,12 @@ export default function AppIndex() {
     setFormErrors(nextFormErrors);
 
     if (hasCampaignDraftErrors(nextFormErrors)) {
-      setErr("Check the highlighted campaign fields and try again.");
+      setErr(t("Check the highlighted campaign fields and try again."));
       return;
     }
 
     if (!canCreateCampaign(capabilities, campaignCount)) {
-      setErr(getPlanHelpText(capabilities, campaignCount));
+      setErr(getPlanHelpText(capabilities, campaignCount, t));
       return;
     }
 
@@ -916,7 +959,9 @@ export default function AppIndex() {
 
           setErr(
             data.error ||
-              "Your campaign limit has been reached. Upgrade to create more campaigns.",
+              t(
+                "Your campaign limit has been reached. Upgrade to create more campaigns.",
+              ),
           );
 
           if (data?.plan || data?.campaignLimit !== undefined) {
@@ -944,7 +989,9 @@ export default function AppIndex() {
           return;
         }
 
-        throw new Error(data?.error || `Create failed (${res.status})`);
+        throw new Error(
+          data?.error || t("Create failed ({status})", { status: res.status }),
+        );
       }
 
       if (data?.capabilities) {
@@ -954,12 +1001,14 @@ export default function AppIndex() {
       resetForm();
       markOnboardingSeen();
       showToast(
-        "Campaign created. Copy its tracking link or open the QR code to start collecting data.",
+        t(
+          "Campaign created. Copy its tracking link or open the QR code to start collecting data.",
+        ),
       );
       await loadCampaigns();
       window.setTimeout(scrollToCampaigns, 150);
     } catch (e) {
-      setErr(e?.message || "Could not create campaign.");
+      setErr(e?.message || t("Could not create campaign."));
     } finally {
       setLoading(false);
     }
@@ -976,12 +1025,16 @@ export default function AppIndex() {
     showToast,
     markOnboardingSeen,
     scrollToCampaigns,
+    t,
   ]);
 
   const deleteCampaign = useCallback(
     async (campaignId, campaignName) => {
       const confirmed = window.confirm(
-        `Delete campaign "${campaignName}"?\n\nThis will also remove its tracked events.`,
+        t(
+          'Delete campaign "{campaign}"?\n\nThis will also remove its tracked events.',
+          { campaign: campaignName },
+        ),
       );
 
       if (!confirmed) return;
@@ -999,18 +1052,23 @@ export default function AppIndex() {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          throw new Error(data?.error || `Delete failed (${res.status})`);
+          throw new Error(
+            data?.error ||
+              t("Delete failed ({status})", { status: res.status }),
+          );
         }
 
-        showToast(`Campaign "${campaignName}" deleted`);
+        showToast(
+          t('Campaign "{campaign}" deleted', { campaign: campaignName }),
+        );
         await loadCampaigns();
       } catch (e) {
-        setErr(e?.message || "Could not delete campaign.");
+        setErr(e?.message || t("Could not delete campaign."));
       } finally {
         setLoading(false);
       }
     },
-    [loadCampaigns, showToast],
+    [loadCampaigns, showToast, t],
   );
 
   useEffect(() => {
@@ -1061,7 +1119,7 @@ export default function AppIndex() {
       : "";
 
     if (!goUrl) {
-      setErr("The first campaign does not have a tracking link yet.");
+      setErr(t("The first campaign does not have a tracking link yet."));
       return;
     }
 
@@ -1069,12 +1127,16 @@ export default function AppIndex() {
 
     if (ok) {
       markAssetPrepared();
-      showToast("Tracking link copied. Use this exact link in the campaign.");
+      showToast(
+        t("Tracking link copied. Use this exact link in the campaign."),
+      );
     } else {
-      setErr("The tracking link could not be copied. Open the campaign below.");
+      setErr(
+        t("The tracking link could not be copied. Open the campaign below."),
+      );
       scrollToCampaigns();
     }
-  }, [campaigns, markAssetPrepared, scrollToCampaigns, showToast]);
+  }, [campaigns, markAssetPrepared, scrollToCampaigns, showToast, t]);
 
   const handleSetupAction = useCallback(
     async (action) => {
@@ -1090,7 +1152,7 @@ export default function AppIndex() {
 
       if (action === "click") {
         await loadCampaigns();
-        showToast("Tracking data refreshed");
+        showToast(t("Tracking data refreshed"));
         return;
       }
 
@@ -1110,6 +1172,7 @@ export default function AppIndex() {
       scrollToCampaigns,
       scrollToCreate,
       showToast,
+      t,
     ],
   );
 
@@ -1130,16 +1193,16 @@ export default function AppIndex() {
         : "";
 
       if (!goUrl) {
-        setErr("This campaign does not have a tracking link.");
+        setErr(t("This campaign does not have a tracking link."));
         return;
       }
 
       const ok = await safeCopy(goUrl);
 
       if (ok) markAssetPrepared();
-      showToast(ok ? "Tracking link copied" : "Copy failed");
+      showToast(ok ? t("Tracking link copied") : t("Copy failed"));
     },
-    [markAssetPrepared, showToast],
+    [markAssetPrepared, showToast, t],
   );
 
   const openCampaignQr = useCallback(
@@ -1149,7 +1212,7 @@ export default function AppIndex() {
         : "";
 
       if (!goUrl) {
-        setErr("This campaign does not have a tracking link.");
+        setErr(t("This campaign does not have a tracking link."));
         return;
       }
 
@@ -1162,7 +1225,7 @@ export default function AppIndex() {
       );
       setQrOpen(true);
     },
-    [markAssetPrepared],
+    [markAssetPrepared, t],
   );
 
   const assignCampaignProduct = useCallback(
@@ -1184,29 +1247,32 @@ export default function AppIndex() {
 
         if (!res.ok) {
           throw new Error(
-            data?.error || `Product assignment failed (${res.status})`,
+            data?.error ||
+              t("Product assignment failed ({status})", {
+                status: res.status,
+              }),
           );
         }
 
-        showToast(data?.message || "Campaign assigned to Shopify product.");
+        showToast(data?.message || t("Campaign assigned to Shopify product."));
         await loadCampaigns();
         return true;
       } catch (error) {
         setErr(
           error?.message ||
-            "Could not assign this campaign to the selected product.",
+            t("Could not assign this campaign to the selected product."),
         );
         return false;
       } finally {
         setLoading(false);
       }
     },
-    [loadCampaigns, showToast],
+    [loadCampaigns, showToast, t],
   );
 
   if (initialLoading) {
     return (
-      <Page title="WhatSells" subtitle="Campaign tracking for Shopify">
+      <Page title="WhatSells" subtitle={t("Campaign tracking for Shopify")}>
         <DashboardSkeleton />
       </Page>
     );
@@ -1214,7 +1280,7 @@ export default function AppIndex() {
 
   return (
     <>
-      <Page title="WhatSells" subtitle="Campaign tracking for Shopify">
+      <Page title="WhatSells" subtitle={t("Campaign tracking for Shopify")}>
         <Layout>
           <Layout.Section>
             <BlockStack gap="400">
@@ -1233,22 +1299,23 @@ export default function AppIndex() {
                   <InlineStack gap="400" align="space-between" wrap>
                     <BlockStack gap="100">
                       <Text variant="headingMd" as="h2">
-                        Dashboard
+                        {t("Dashboard")}
                       </Text>
 
                       <Text as="p" tone="subdued">
-                        See which campaign links and QR codes create clicks,
-                        orders and revenue.
+                        {t(
+                          "See which campaign links and QR codes create clicks, orders and revenue.",
+                        )}
                       </Text>
                     </BlockStack>
 
                     <InlineStack gap="200" wrap>
                       <Button onClick={() => setOnboardingOpen(true)}>
-                        Setup guide
+                        {t("Setup guide")}
                       </Button>
 
                       <Button onClick={loadCampaigns} loading={loading}>
-                        Refresh data
+                        {t("Refresh data")}
                       </Button>
                     </InlineStack>
                   </InlineStack>
@@ -1293,12 +1360,12 @@ export default function AppIndex() {
                                 );
                               }}
                             >
-                              {getUpgradeButtonLabel(capabilities)}
+                              {t(getUpgradeButtonLabel(capabilities))}
                             </Button>
                           </InlineStack>
                         ) : (
                           <Button onClick={loadCampaigns} loading={loading}>
-                            Try again
+                            {t("Try again")}
                           </Button>
                         )}
                       </BlockStack>
@@ -1307,75 +1374,78 @@ export default function AppIndex() {
 
                   <div className={styles.metricGrid}>
                     <MetricCard
-                      label="Products"
+                      label={t("Products")}
                       value={String(productCount)}
-                      helpText="Shopify products with at least one campaign"
+                      helpText={t(
+                        "Shopify products with at least one campaign",
+                      )}
                     />
 
                     <MetricCard
-                      label="Clicks"
+                      label={t("Clicks")}
                       value={String(overview.clicks)}
-                      helpText="Tracked visits through campaign links and QR codes"
+                      helpText={t(
+                        "Tracked visits through campaign links and QR codes",
+                      )}
                     />
 
                     <MetricCard
-                      label="Orders"
+                      label={t("Orders")}
                       infoKey="orders"
                       value={String(overview.orders)}
-                      helpText="Attributed active orders"
+                      helpText={t("Attributed active orders")}
                     />
 
                     <MetricCard
-                      label="Net revenue"
+                      label={t("Net revenue")}
                       infoKey="revenue"
-                      value={formatMoneyFromCents(
-                        overview.revenueCents,
-                        currency,
+                      value={formatMoney(overview.revenueCents, currency)}
+                      helpText={t(
+                        "Attributed revenue after refunds and cancellations",
                       )}
-                      helpText="Attributed revenue after refunds and cancellations"
                     />
 
                     <MetricCard
-                      label="Conversion"
+                      label={t("Conversion")}
                       infoKey="conversion"
                       value={formatPercent(overview.conversionRate)}
-                      helpText="Orders divided by tracked clicks"
+                      helpText={t("Orders divided by tracked clicks")}
                     />
 
                     {hasBasicAnalytics ? (
                       <>
                         <MetricCard
-                          label="Campaign result"
+                          label={t("Campaign result")}
                           infoKey="campaignResult"
-                          value={formatMoneyFromCents(
-                            overview.profitCents,
-                            currency,
+                          value={formatMoney(overview.profitCents, currency)}
+                          helpText={t(
+                            "Revenue minus campaign cost; product and operating costs are excluded",
                           )}
-                          helpText="Revenue minus campaign cost; product and operating costs are excluded"
                         />
 
                         <MetricCard
-                          label="ROI"
+                          label={t("ROI")}
                           infoKey="roi"
                           value={formatPercent(overview.roi)}
-                          helpText="Campaign result divided by campaign cost"
-                        />
-
-                        <MetricCard
-                          label="Refunds"
-                          infoKey="refunds"
-                          value={formatMoneyFromCents(
-                            overview.refundedCents,
-                            currency,
+                          helpText={t(
+                            "Campaign result divided by campaign cost",
                           )}
-                          helpText="Refunded value from attributed orders"
                         />
 
                         <MetricCard
-                          label="Cancelled orders"
+                          label={t("Refunds")}
+                          infoKey="refunds"
+                          value={formatMoney(overview.refundedCents, currency)}
+                          helpText={t("Refunded value from attributed orders")}
+                        />
+
+                        <MetricCard
+                          label={t("Cancelled orders")}
                           infoKey="cancelledOrders"
                           value={String(overview.cancelledOrders)}
-                          helpText="Removed from active order and conversion counts"
+                          helpText={t(
+                            "Removed from active order and conversion counts",
+                          )}
                         />
                       </>
                     ) : null}
@@ -1384,17 +1454,17 @@ export default function AppIndex() {
                   {hasBasicAnalytics ? (
                     <div className={styles.highlightGrid}>
                       <CampaignHighlightCard
-                        title="Top campaign"
+                        title={t("Top campaign")}
                         campaign={topCampaign}
                         currency={currency}
-                        emptyText="No campaign performance data yet."
+                        emptyText={t("No campaign performance data yet.")}
                       />
 
                       <CampaignHighlightCard
-                        title="Needs attention"
+                        title={t("Needs attention")}
                         campaign={attentionCampaign}
                         currency={currency}
-                        emptyText="No campaign needs attention yet."
+                        emptyText={t("No campaign needs attention yet.")}
                       />
                     </div>
                   ) : (
@@ -1419,12 +1489,13 @@ export default function AppIndex() {
                   <BlockStack gap="400">
                     <BlockStack gap="100">
                       <Text variant="headingMd" as="h2">
-                        Create campaign
+                        {t("Create campaign")}
                       </Text>
 
                       <Text as="p" tone="subdued">
-                        Create a tracking link or QR campaign and send visitors
-                        to your Shopify product page.
+                        {t(
+                          "Create a tracking link or QR campaign and send visitors to your Shopify product page.",
+                        )}
                       </Text>
                     </BlockStack>
 
@@ -1434,7 +1505,7 @@ export default function AppIndex() {
                       <Banner tone="warning">
                         <BlockStack gap="200">
                           <Text as="p">
-                            {getPlanHelpText(capabilities, campaignCount)}
+                            {getPlanHelpText(capabilities, campaignCount, t)}
                           </Text>
 
                           {upgradeUrl || proUrl || basicUrl || expertUrl ? (
@@ -1452,7 +1523,7 @@ export default function AppIndex() {
                                 );
                               }}
                             >
-                              {getUpgradeButtonLabel(capabilities)}
+                              {t(getUpgradeButtonLabel(capabilities))}
                             </Button>
                           ) : null}
                         </BlockStack>
@@ -1466,7 +1537,7 @@ export default function AppIndex() {
                         <TextField
                           label={
                             <InfoLabel
-                              label="Campaign name"
+                              label={t("Campaign name")}
                               infoKey="campaignName"
                             />
                           }
@@ -1479,8 +1550,12 @@ export default function AppIndex() {
                             }));
                           }}
                           autoComplete="off"
-                          placeholder="e.g. TikTok creator, flyer drop, packaging insert"
-                          error={formErrors.name || undefined}
+                          placeholder={t(
+                            "e.g. TikTok creator, flyer drop, packaging insert",
+                          )}
+                          error={
+                            formErrors.name ? t(formErrors.name) : undefined
+                          }
                           disabled={!createAllowed}
                         />
                       </div>
@@ -1491,7 +1566,7 @@ export default function AppIndex() {
                         <Select
                           label={
                             <InfoLabel
-                              label="Campaign type"
+                              label={t("Campaign type")}
                               infoKey="campaignType"
                             />
                           }
@@ -1507,7 +1582,7 @@ export default function AppIndex() {
                       >
                         <BlockStack gap="150">
                           <InfoLabel
-                            label="Shopify product"
+                            label={t("Shopify product")}
                             infoKey="productSelection"
                           />
                           <ProductPickerField
@@ -1519,7 +1594,9 @@ export default function AppIndex() {
                                 product: "",
                               }));
                             }}
-                            error={formErrors.product || ""}
+                            error={
+                              formErrors.product ? t(formErrors.product) : ""
+                            }
                             disabled={!createAllowed}
                           />
                         </BlockStack>
@@ -1531,7 +1608,9 @@ export default function AppIndex() {
                         <TextField
                           label={
                             <InfoLabel
-                              label={`Campaign cost (${currency})`}
+                              label={t("Campaign cost ({currency})", {
+                                currency,
+                              })}
                               infoKey="campaignCost"
                             />
                           }
@@ -1544,13 +1623,19 @@ export default function AppIndex() {
                             }));
                           }}
                           autoComplete="off"
-                          placeholder="e.g. 250"
+                          placeholder={t("e.g. 250")}
                           helpText={
                             hasBasicAnalytics
-                              ? "Optional. Used for campaign result, ROI and ROAS."
-                              : "Available from Basic. Free campaigns still track clicks, orders and net revenue."
+                              ? t(
+                                  "Optional. Used for campaign result, ROI and ROAS.",
+                                )
+                              : t(
+                                  "Available from Basic. Free campaigns still track clicks, orders and net revenue.",
+                                )
                           }
-                          error={formErrors.cost || undefined}
+                          error={
+                            formErrors.cost ? t(formErrors.cost) : undefined
+                          }
                           disabled={!createAllowed || !hasBasicAnalytics}
                         />
                       </div>
@@ -1559,11 +1644,15 @@ export default function AppIndex() {
                         className={`${styles.fieldCell} ${styles.notesField}`}
                       >
                         <TextField
-                          label={<InfoLabel label="Notes" infoKey="notes" />}
+                          label={
+                            <InfoLabel label={t("Notes")} infoKey="notes" />
+                          }
                           value={notes}
                           onChange={setNotes}
                           autoComplete="off"
-                          placeholder="e.g. 300 packaging inserts or creator deal"
+                          placeholder={t(
+                            "e.g. 300 packaging inserts or creator deal",
+                          )}
                           disabled={!createAllowed}
                         />
                       </div>
@@ -1577,7 +1666,7 @@ export default function AppIndex() {
                             !name.trim() || !selectedProduct || !createAllowed
                           }
                         >
-                          {getCreateButtonLabel(capabilities, campaignCount)}
+                          {t(getCreateButtonLabel(capabilities, campaignCount))}
                         </Button>
                       </div>
                     </div>
@@ -1591,13 +1680,13 @@ export default function AppIndex() {
                     <InlineStack align="space-between" gap="300" wrap>
                       <BlockStack gap="100">
                         <Text variant="headingMd" as="h2">
-                          Products & channels
+                          {t("Products & channels")}
                         </Text>
 
                         <Text as="p" tone="subdued">
-                          Every product brings its TikTok, Instagram,
-                          influencer, e-mail, flyer, packaging and event
-                          campaigns into one measurable view.
+                          {t(
+                            "Every product brings its TikTok, Instagram, influencer, e-mail, flyer, packaging and event campaigns into one measurable view.",
+                          )}
                         </Text>
                       </BlockStack>
 
@@ -1611,12 +1700,12 @@ export default function AppIndex() {
                               );
                             }}
                           >
-                            Export CSV
+                            {t("Export CSV")}
                           </Button>
                         ) : null}
 
                         <Badge tone={getPlanBadgeTone(capabilities)}>
-                          {getPlanHeadline(capabilities, campaignCount)}
+                          {getPlanHeadline(capabilities, campaignCount, t)}
                         </Badge>
                       </InlineStack>
                     </InlineStack>
@@ -1626,11 +1715,11 @@ export default function AppIndex() {
                         <div className={styles.filterGrid}>
                           <div className={styles.searchField}>
                             <TextField
-                              label="Search products and campaigns"
+                              label={t("Search products and campaigns")}
                               value={productSearch}
                               onChange={setProductSearch}
                               autoComplete="off"
-                              placeholder="Product, campaign or note"
+                              placeholder={t("Product, campaign or note")}
                               clearButton
                               onClearButtonClick={() => setProductSearch("")}
                             />
@@ -1638,7 +1727,7 @@ export default function AppIndex() {
 
                           <div className={styles.filterField}>
                             <Select
-                              label="Channel"
+                              label={t("Channel")}
                               options={sourceFilterOptions}
                               value={sourceFilter}
                               onChange={setSourceFilter}
@@ -1647,7 +1736,7 @@ export default function AppIndex() {
 
                           <div className={styles.filterField}>
                             <Select
-                              label="Status"
+                              label={t("Status")}
                               options={statusFilterOptions}
                               value={statusFilter}
                               onChange={setStatusFilter}
@@ -1683,16 +1772,13 @@ export default function AppIndex() {
               <Card>
                 <BlockStack gap="200">
                   <Text variant="headingMd" as="h2">
-                    Order tracking status
+                    {t("Order tracking status")}
                   </Text>
 
                   <Text as="p" tone="subdued">
-                    Orders are attributed when a customer completes checkout
-                    after visiting your store through a WhatSells tracking link.
-                    Refunds reduce net revenue automatically, and cancelled
-                    orders are removed from active order and conversion counts.
-                    Open campaign details to view attributed orders and recent
-                    tracking events.
+                    {t(
+                      "Orders are attributed when a customer completes checkout after visiting your store through a WhatSells tracking link. Refunds reduce net revenue automatically, and cancelled orders are removed from active order and conversion counts. Open campaign details to view attributed orders and recent tracking events.",
+                    )}
                   </Text>
                 </BlockStack>
               </Card>
@@ -1703,20 +1789,22 @@ export default function AppIndex() {
                     <Badge
                       tone={isProPlan(capabilities) ? "success" : "attention"}
                     >
-                      Add-to-Cart tracking
+                      {t("Add-to-Cart tracking")}
                     </Badge>
 
                     <Text as="p" fontWeight="semibold">
                       {isProPlan(capabilities)
-                        ? `Available in your ${getPlanName(capabilities)} plan`
-                        : "Available with Pro Analytics"}
+                        ? t("Available in your {plan} plan", {
+                            plan: t(getPlanName(capabilities)),
+                          })
+                        : t("Available with Pro Analytics")}
                     </Text>
                   </InlineStack>
 
                   <Text as="p" tone="subdued">
-                    Pro and Expert record cart intent before an order happens
-                    and separate traffic from buying intent: click → add-to-cart
-                    → order. Free and Basic cart events are not stored.
+                    {t(
+                      "Pro and Expert record cart intent before an order happens and separate traffic from buying intent: click → add-to-cart → order. Free and Basic cart events are not stored.",
+                    )}
                   </Text>
 
                   {!isProPlan(capabilities) && (proUrl || upgradeUrl) ? (
@@ -1724,7 +1812,7 @@ export default function AppIndex() {
                       variant="primary"
                       onClick={() => window.open(proUrl || upgradeUrl, "_top")}
                     >
-                      Upgrade to Pro
+                      {t("Upgrade to Pro")}
                     </Button>
                   ) : null}
                 </BlockStack>

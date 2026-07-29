@@ -2,9 +2,11 @@ import { useState } from "react";
 import { BlockStack, Box, InlineStack, Popover, Text } from "@shopify/polaris";
 
 import { METRIC_INFO } from "../metric-info";
+import { useI18n } from "../i18n-context";
 
 export default function InfoLabel({ label, infoKey }) {
   const [active, setActive] = useState(false);
+  const { t } = useI18n();
   const info = METRIC_INFO[infoKey];
 
   if (!info) return label;
@@ -12,7 +14,7 @@ export default function InfoLabel({ label, infoKey }) {
   const activator = (
     <button
       type="button"
-      aria-label={`Explain ${label}`}
+      aria-label={t("Explain {label}", { label })}
       aria-expanded={active}
       onClick={() => setActive((value) => !value)}
       style={{
@@ -46,32 +48,32 @@ export default function InfoLabel({ label, infoKey }) {
         <Box padding="300" maxWidth="360px">
           <BlockStack gap="200">
             <Text variant="headingSm" as="h3">
-              {info.title}
+              {t(info.title)}
             </Text>
 
-            <Text as="p">{info.description}</Text>
+            <Text as="p">{t(info.description)}</Text>
 
             {info.formula ? (
               <BlockStack gap="050">
                 <Text as="p" fontWeight="semibold">
-                  Formula
+                  {t("Formula")}
                 </Text>
-                <Text as="p">{info.formula}</Text>
+                <Text as="p">{t(info.formula)}</Text>
               </BlockStack>
             ) : null}
 
             {info.example ? (
               <BlockStack gap="050">
                 <Text as="p" fontWeight="semibold">
-                  Example
+                  {t("Example")}
                 </Text>
-                <Text as="p">{info.example}</Text>
+                <Text as="p">{t(info.example)}</Text>
               </BlockStack>
             ) : null}
 
             {info.note ? (
               <Text as="p" tone="subdued">
-                {info.note}
+                {t(info.note)}
               </Text>
             ) : null}
           </BlockStack>
