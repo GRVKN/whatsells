@@ -300,7 +300,7 @@ export async function createExpertCampaignPackage({
       id: clean(productId, 200),
       shop,
       status: "ACTIVE",
-      onlineStoreUrl: { not: null },
+      onlineStoreUrl: { not: "" },
     },
   });
 
