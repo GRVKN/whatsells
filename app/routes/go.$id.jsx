@@ -1,6 +1,6 @@
 // app/routes/go.$id.jsx
 import db from "../db.server";
-import crypto from "node:crypto";
+import { hashIp } from "../privacy.server";
 
 const ATTR_COOKIE = "ws_cid";
 const TARGET_PARAM = "ws_campaign";
@@ -47,12 +47,6 @@ function safeHttpUrl(url, fallback) {
   } catch {
     return fallback;
   }
-}
-
-function hashIp(ip) {
-  if (!ip) return null;
-
-  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32);
 }
 
 function appendCampaignParam(url, campaignToken) {
@@ -190,7 +184,10 @@ export async function loader({ request, params }) {
   }
 
   const fallbackUrl = shopToUrl(campaign.shop);
-  const baseTarget = safeHttpUrl(campaign.targetUrl || fallbackUrl, fallbackUrl);
+  const baseTarget = safeHttpUrl(
+    campaign.targetUrl || fallbackUrl,
+    fallbackUrl,
+  );
   const targetUrl = appendCampaignParam(baseTarget, campaign.publicToken);
 
   await trackClick({

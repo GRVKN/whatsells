@@ -1,18 +1,20 @@
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
 import { getShopPlan } from "../billing.server";
+import { getShopCurrency } from "../shop-currency.server";
+import {
+  buildCampaignLimitMessage,
+  getCampaignCostUpdateMode,
+  getPlanCapabilities,
+  getPlanLabel,
+} from "../plans";
+import { CAMPAIGN_SOURCE_KEYS } from "../campaign-sources";
+import {
+  buildTrackedProductUpsert,
+  loadVerifiedShopifyProduct,
+} from "../shopify-product.server";
 
-const FREE_CAMPAIGN_LIMIT = 3;
-const BASIC_CAMPAIGN_LIMIT = 20;
-
-const ALLOWED_SOURCE_TYPES = new Set([
-  "qr",
-  "link",
-  "packaging",
-  "flyer",
-  "influencer",
-  "event",
-]);
+const ALLOWED_SOURCE_TYPES = new Set(CAMPAIGN_SOURCE_KEYS);
 
 const ALLOWED_STATUS = new Set(["active", "paused", "archived"]);
 
@@ -23,42 +25,6 @@ function cleanStr(v) {
 function cleanOptionalNotes(v) {
   const s = cleanStr(v);
   return s || null;
-}
-
-function normalizeUrl(input) {
-  let url = input.trim();
-
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    url = "https://" + url;
-  }
-
-  if (url.includes(".myshopify.com") && !url.startsWith("https://")) {
-    url = "https://" + url;
-  }
-
-  return url;
-}
-
-function parseOptionalUrl(v) {
-  const s = cleanStr(v);
-  if (!s) return { ok: true, value: null };
-
-  const normalized = normalizeUrl(s);
-
-  try {
-    const u = new URL(normalized);
-
-    if (!["http:", "https:"].includes(u.protocol)) {
-      return {
-        ok: false,
-        error: "Target URL must start with http:// or https://",
-      };
-    }
-
-    return { ok: true, value: u.toString() };
-  } catch {
-    return { ok: false, error: "Target URL is invalid" };
-  }
 }
 
 function parseMoneyToCents(v, defaultValue = 0) {
@@ -146,78 +112,6 @@ function calcBreakEvenOrders(costCents, avgOrderValueCents) {
   return Math.ceil(cost / avgOrder);
 }
 
-function normalizePlanName(plan) {
-  return cleanStr(plan?.plan || plan?.name || plan?.currentPlan).toLowerCase();
-}
-
-function isProPlan(plan) {
-  const planName = normalizePlanName(plan);
-
-  return Boolean(
-    plan?.isPro ||
-      plan?.isExpert ||
-      plan?.hasPro ||
-      planName === "pro" ||
-      planName === "pro analytics" ||
-      planName === "expert" ||
-      planName === "expert+" ||
-      planName === "expert_plus",
-  );
-}
-
-function isBasicPlan(plan) {
-  const planName = normalizePlanName(plan);
-
-  return Boolean(
-    plan?.isBasic ||
-      plan?.hasBasic ||
-      plan?.isPaid ||
-      planName === "basic" ||
-      planName === "basic analytics",
-  );
-}
-
-function getCampaignLimit(plan) {
-  if (isProPlan(plan)) return null;
-  if (isBasicPlan(plan)) return BASIC_CAMPAIGN_LIMIT;
-
-  return FREE_CAMPAIGN_LIMIT;
-}
-
-function getPlanLabel(plan) {
-  if (isProPlan(plan)) return "Pro";
-  if (isBasicPlan(plan)) return "Basic";
-
-  return "Free";
-}
-
-function buildCampaignLimitMessage(plan, limit) {
-  const label = getPlanLabel(plan);
-
-  if (label === "Basic") {
-    return `Your Basic plan includes up to ${limit} campaigns. Upgrade to Pro to create unlimited campaigns.`;
-  }
-
-  return `Your free plan includes ${limit} campaigns. Upgrade to Basic to create up to ${BASIC_CAMPAIGN_LIMIT} campaigns, or Pro for unlimited campaigns.`;
-}
-
-function getPlanCapabilities(plan, campaignCount = 0) {
-  const campaignLimit = getCampaignLimit(plan);
-  const remainingCampaigns =
-    campaignLimit === null ? null : Math.max(campaignLimit - campaignCount, 0);
-
-  return {
-    plan: getPlanLabel(plan),
-    campaignLimit,
-    campaignCount,
-    remainingCampaigns,
-    canCreateCampaign:
-      campaignLimit === null || campaignCount < campaignLimit,
-    hasUnlimitedCampaigns: campaignLimit === null,
-    canUseAddToCartTracking: isProPlan(plan),
-  };
-}
-
 async function loadClickMaps(campaignIds) {
   if (!campaignIds.length) {
     return {
@@ -258,7 +152,12 @@ async function loadClickMaps(campaignIds) {
   };
 }
 
-function enrichCampaign(campaign, clicks7dMap = {}, clicks30dMap = {}) {
+function enrichCampaign(
+  campaign,
+  capabilities,
+  clicks7dMap = {},
+  clicks30dMap = {},
+) {
   const profitCents = calcProfit(campaign.costCents, campaign.revenueCents);
 
   const averageOrderValueCents = calcAverageOrderValue(
@@ -269,32 +168,40 @@ function enrichCampaign(campaign, clicks7dMap = {}, clicks30dMap = {}) {
   const clicks7d = clicks7dMap[campaign.id] || 0;
   const clicks30d = clicks30dMap[campaign.id] || 0;
   const addToCartCount = numberOrZero(campaign.addToCartCount);
+  const hasBasicAnalytics = capabilities.canUseCostAnalytics;
+  const hasProFunnel = capabilities.canUseAddToCartTracking;
 
   return {
     ...campaign,
-    addToCartCount,
-    profitCents,
-    clicks7d,
-    clicks30d,
+    costCents: hasBasicAnalytics ? campaign.costCents : null,
+    refundedCents: hasBasicAnalytics ? campaign.refundedCents : null,
+    cancelledOrdersCount: hasBasicAnalytics
+      ? campaign.cancelledOrdersCount
+      : null,
+    addToCartCount: hasProFunnel ? addToCartCount : null,
+    profitCents: hasBasicAnalytics ? profitCents : null,
+    clicks7d: capabilities.canUsePerformanceHistory ? clicks7d : null,
+    clicks30d: capabilities.canUsePerformanceHistory ? clicks30d : null,
     conversionRate: calcConversionRate(
       campaign.clicksCount,
       campaign.ordersCount,
     ),
-    addToCartRate: calcAddToCartRate(
-      campaign.clicksCount,
-      addToCartCount,
-    ),
-    cartToOrderRate: calcCartToOrderRate(
-      addToCartCount,
-      campaign.ordersCount,
-    ),
-    averageOrderValueCents,
-    breakEvenOrders: calcBreakEvenOrders(
-      campaign.costCents,
-      averageOrderValueCents,
-    ),
-    roas: calcRoas(campaign.costCents, campaign.revenueCents),
-    roi: calcRoi(campaign.costCents, campaign.revenueCents),
+    addToCartRate: hasProFunnel
+      ? calcAddToCartRate(campaign.clicksCount, addToCartCount)
+      : null,
+    cartToOrderRate: hasProFunnel
+      ? calcCartToOrderRate(addToCartCount, campaign.ordersCount)
+      : null,
+    averageOrderValueCents: hasBasicAnalytics ? averageOrderValueCents : null,
+    breakEvenOrders: hasBasicAnalytics
+      ? calcBreakEvenOrders(campaign.costCents, averageOrderValueCents)
+      : null,
+    roas: hasBasicAnalytics
+      ? calcRoas(campaign.costCents, campaign.revenueCents)
+      : null,
+    roi: hasBasicAnalytics
+      ? calcRoi(campaign.costCents, campaign.revenueCents)
+      : null,
   };
 }
 
@@ -381,11 +288,27 @@ const campaignSelect = {
   clicksCount: true,
   addToCartCount: true,
   revenueCents: true,
+  refundedCents: true,
   ordersCount: true,
+  cancelledOrdersCount: true,
   notes: true,
   status: true,
   createdAt: true,
   updatedAt: true,
+  productId: true,
+  product: {
+    select: {
+      id: true,
+      shopifyProductId: true,
+      title: true,
+      handle: true,
+      status: true,
+      onlineStoreUrl: true,
+      imageUrl: true,
+      imageAlt: true,
+      updatedAt: true,
+    },
+  },
 };
 
 // GET /api/campaigns
@@ -393,7 +316,7 @@ export async function loader({ request }) {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
-  const [campaigns, campaignCount, plan] = await Promise.all([
+  const [campaigns, campaignCount, plan, currency] = await Promise.all([
     db.campaign.findMany({
       where: { shop },
       orderBy: { createdAt: "desc" },
@@ -405,6 +328,8 @@ export async function loader({ request }) {
     }),
 
     getShopPlan({ shop, admin }),
+
+    getShopCurrency(admin),
   ]);
 
   const capabilities = getPlanCapabilities(plan, campaignCount);
@@ -413,27 +338,42 @@ export async function loader({ request }) {
     return Response.json({
       campaigns: [],
       capabilities,
+      currency,
       upgradeUrl: plan.upgradeUrl,
       basicUrl: plan.basicUrl,
       proUrl: plan.proUrl,
+      expertUrl: plan.expertUrl,
     });
   }
 
   const campaignIds = campaigns.map((campaign) => campaign.id);
-  const { clicks7dMap, clicks30dMap } = await loadClickMaps(campaignIds);
+  const { clicks7dMap, clicks30dMap } = capabilities.canUsePerformanceHistory
+    ? await loadClickMaps(campaignIds)
+    : { clicks7dMap: {}, clicks30dMap: {} };
 
   const enriched = campaigns.map((campaign) =>
-    enrichCampaign(campaign, clicks7dMap, clicks30dMap),
+    enrichCampaign(campaign, capabilities, clicks7dMap, clicks30dMap),
   );
 
-  const rankedCampaigns = addCampaignRanking(enriched);
+  const rankedCampaigns = capabilities.canUseCampaignComparison
+    ? addCampaignRanking(enriched)
+    : enriched.map((campaign) => ({
+        ...campaign,
+        rank: null,
+        totalRankedCampaigns: null,
+        isBestCampaign: false,
+        isWorstCampaign: false,
+        performanceLabel: null,
+      }));
 
   return Response.json({
     campaigns: rankedCampaigns,
     capabilities,
+    currency,
     upgradeUrl: plan.upgradeUrl,
     basicUrl: plan.basicUrl,
     proUrl: plan.proUrl,
+    expertUrl: plan.expertUrl,
   });
 }
 
@@ -449,20 +389,20 @@ async function handleCreateCampaign(request, shop, admin) {
 
   const name = cleanStr(body?.name);
   const sourceType = cleanStr(body?.sourceType || "qr");
+  const shopifyProductId = cleanStr(body?.shopifyProductId);
   const notes = cleanOptionalNotes(body?.notes);
   const status = cleanStr(body?.status || "active");
-
-  const targetUrlParsed = parseOptionalUrl(body?.targetUrl);
-
-  if (!targetUrlParsed.ok) {
-    return Response.json({ error: targetUrlParsed.error }, { status: 400 });
-  }
-
-  const targetUrl = targetUrlParsed.value;
   const costCents = parseMoneyToCents(body?.cost, 0);
 
   if (!name) {
     return Response.json({ error: "Name is required" }, { status: 400 });
+  }
+
+  if (name.length > 120) {
+    return Response.json(
+      { error: "Campaign name must be 120 characters or fewer" },
+      { status: 400 },
+    );
   }
 
   if (!ALLOWED_SOURCE_TYPES.has(sourceType)) {
@@ -471,6 +411,13 @@ async function handleCreateCampaign(request, shop, admin) {
 
   if (!ALLOWED_STATUS.has(status)) {
     return Response.json({ error: "Invalid status" }, { status: 400 });
+  }
+
+  if (!shopifyProductId) {
+    return Response.json(
+      { error: "Choose the Shopify product this campaign promotes." },
+      { status: 400 },
+    );
   }
 
   if (costCents === null) {
@@ -494,47 +441,90 @@ async function handleCreateCampaign(request, shop, admin) {
   });
 
   const plan = await getShopPlan({ shop, admin });
-  const campaignLimit = getCampaignLimit(plan);
+  const capabilities = getPlanCapabilities(plan, campaignCount);
+  const campaignLimit = capabilities.campaignLimit;
 
   if (campaignLimit !== null && campaignCount >= campaignLimit) {
     return Response.json(
       {
-        error: buildCampaignLimitMessage(plan, campaignLimit),
+        error: buildCampaignLimitMessage(plan),
         upgradeRequired: true,
         upgradeUrl: plan.upgradeUrl,
         basicUrl: plan.basicUrl,
         proUrl: plan.proUrl,
+        expertUrl: plan.expertUrl,
         plan: getPlanLabel(plan),
         campaignLimit,
         campaignCount,
         remainingCampaigns: 0,
-        canUseAddToCartTracking: isProPlan(plan),
+        ...capabilities,
       },
       { status: 403 },
     );
   }
 
-  try {
-    const campaign = await db.campaign.create({
-      data: {
-        shop,
-        name,
-        sourceType,
-        targetUrl,
-        costCents,
-        notes,
-        status,
+  if (costCents > 0 && !capabilities.canUseCostAnalytics) {
+    return Response.json(
+      {
+        error:
+          "Campaign cost, campaign result, ROI and ROAS are available from the Basic plan.",
+        upgradeRequired: true,
+        requiredPlan: "Basic",
+        upgradeUrl: plan.upgradeUrl,
+        basicUrl: plan.basicUrl,
+        proUrl: plan.proUrl,
+        expertUrl: plan.expertUrl,
+        ...capabilities,
       },
-      select: campaignSelect,
+      { status: 403 },
+    );
+  }
+
+  const selectedProduct = await loadVerifiedShopifyProduct(
+    admin,
+    shopifyProductId,
+  );
+
+  if (!selectedProduct.ok) {
+    return Response.json(
+      { error: selectedProduct.error },
+      { status: selectedProduct.status },
+    );
+  }
+
+  try {
+    const nextCapabilities = getPlanCapabilities(plan, campaignCount + 1);
+    const campaign = await db.$transaction(async (tx) => {
+      const product = await tx.trackedProduct.upsert(
+        buildTrackedProductUpsert({
+          shop,
+          product: selectedProduct.product,
+        }),
+      );
+
+      return tx.campaign.create({
+        data: {
+          shop,
+          name,
+          sourceType,
+          targetUrl: selectedProduct.product.onlineStoreUrl,
+          costCents,
+          notes,
+          status,
+          productId: product.id,
+        },
+        select: campaignSelect,
+      });
     });
 
     return Response.json(
       {
-        campaign: enrichCampaign(campaign),
-        capabilities: getPlanCapabilities(plan, campaignCount + 1),
+        campaign: enrichCampaign(campaign, nextCapabilities),
+        capabilities: nextCapabilities,
         upgradeUrl: plan.upgradeUrl,
         basicUrl: plan.basicUrl,
         proUrl: plan.proUrl,
+        expertUrl: plan.expertUrl,
       },
       { status: 201 },
     );
@@ -547,6 +537,84 @@ async function handleCreateCampaign(request, shop, admin) {
     );
   }
 }
+
+async function assignCampaignProduct({ body, shop, admin }) {
+  const id = cleanStr(body?.id);
+  const shopifyProductId = cleanStr(body?.shopifyProductId);
+
+  if (!id) {
+    return Response.json({ error: "Campaign id is required" }, { status: 400 });
+  }
+
+  if (!shopifyProductId) {
+    return Response.json(
+      { error: "Choose the Shopify product this campaign promotes." },
+      { status: 400 },
+    );
+  }
+
+  const existing = await db.campaign.findFirst({
+    where: { id, shop },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return Response.json({ error: "Campaign not found" }, { status: 404 });
+  }
+
+  const selectedProduct = await loadVerifiedShopifyProduct(
+    admin,
+    shopifyProductId,
+  );
+
+  if (!selectedProduct.ok) {
+    return Response.json(
+      { error: selectedProduct.error },
+      { status: selectedProduct.status },
+    );
+  }
+
+  try {
+    const [plan, campaign] = await Promise.all([
+      getShopPlan({ shop, admin }),
+      db.$transaction(async (tx) => {
+        const product = await tx.trackedProduct.upsert(
+          buildTrackedProductUpsert({
+            shop,
+            product: selectedProduct.product,
+          }),
+        );
+
+        return tx.campaign.update({
+          where: { id: existing.id },
+          data: {
+            productId: product.id,
+            targetUrl: selectedProduct.product.onlineStoreUrl,
+          },
+          select: campaignSelect,
+        });
+      }),
+    ]);
+
+    return Response.json({
+      ok: true,
+      campaign: enrichCampaign(campaign, getPlanCapabilities(plan)),
+      message: `Campaign assigned to ${campaign.product.title}.`,
+    });
+  } catch (error) {
+    console.error("Could not assign campaign to Shopify product", {
+      error,
+      shop,
+      campaignId: id,
+    });
+
+    return Response.json(
+      { error: "Could not assign this campaign to the selected product." },
+      { status: 500 },
+    );
+  }
+}
+
 // PUT /api/campaigns
 async function handleUpdateCampaign(request, shop, admin) {
   let body;
@@ -555,6 +623,10 @@ async function handleUpdateCampaign(request, shop, admin) {
     body = await request.json();
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  if (cleanStr(body?.operation) === "assign_product") {
+    return assignCampaignProduct({ body, shop, admin });
   }
 
   const id = cleanStr(body?.id);
@@ -568,47 +640,90 @@ async function handleUpdateCampaign(request, shop, admin) {
     return Response.json({ error: "Invalid cost value" }, { status: 400 });
   }
 
-  const plan = await getShopPlan({ shop, admin });
-
-  if (!isProPlan(plan)) {
-    return Response.json(
-      {
-        error:
-          "Editing campaign costs over time is available in Pro Analytics.",
-        upgradeRequired: true,
-        upgradeUrl: plan.upgradeUrl,
-        basicUrl: plan.basicUrl,
-        proUrl: plan.proUrl,
-        plan: getPlanLabel(plan),
-        canUseAddToCartTracking: false,
-      },
-      { status: 403 },
-    );
-  }
-
-  const existing = await db.campaign.findFirst({
-    where: { id, shop },
-    select: { id: true, name: true },
-  });
+  const [plan, existing] = await Promise.all([
+    getShopPlan({ shop, admin }),
+    db.campaign.findFirst({
+      where: { id, shop },
+      select: { id: true, name: true, costCents: true },
+    }),
+  ]);
+  const capabilities = getPlanCapabilities(plan);
+  const costUpdateMode = getCampaignCostUpdateMode(plan, existing?.costCents);
 
   if (!existing) {
     return Response.json({ error: "Campaign not found" }, { status: 404 });
   }
 
-  try {
-    const campaign = await db.campaign.update({
-      where: { id },
-      data: {
-        costCents,
+  if (costUpdateMode === "locked") {
+    return Response.json(
+      {
+        error: capabilities.canUseCostAnalytics
+          ? "This campaign already has a cost. Changing it over time is available in Pro."
+          : "Campaign cost and profitability analytics are available from Basic.",
+        upgradeRequired: true,
+        requiredPlan: capabilities.canUseCostAnalytics ? "Pro" : "Basic",
+        upgradeUrl: plan.upgradeUrl,
+        basicUrl: plan.basicUrl,
+        proUrl: plan.proUrl,
+        expertUrl: plan.expertUrl,
+        plan: getPlanLabel(plan),
+        ...capabilities,
       },
-      select: campaignSelect,
-    });
+      { status: 403 },
+    );
+  }
+
+  try {
+    let campaign;
+
+    if (costUpdateMode === "update") {
+      campaign = await db.campaign.update({
+        where: { id },
+        data: {
+          costCents,
+        },
+        select: campaignSelect,
+      });
+    } else {
+      const result = await db.campaign.updateMany({
+        where: {
+          id,
+          shop,
+          costCents: 0,
+        },
+        data: {
+          costCents,
+        },
+      });
+
+      if (result.count !== 1) {
+        return Response.json(
+          {
+            error:
+              "The initial campaign cost was already set. Upgrade to Pro to change it again.",
+            upgradeRequired: true,
+            requiredPlan: "Pro",
+            upgradeUrl: plan.upgradeUrl,
+            proUrl: plan.proUrl,
+            expertUrl: plan.expertUrl,
+          },
+          { status: 409 },
+        );
+      }
+
+      campaign = await db.campaign.findUnique({
+        where: { id },
+        select: campaignSelect,
+      });
+    }
 
     return Response.json({
       ok: true,
-      campaign: enrichCampaign(campaign),
+      campaign: enrichCampaign(campaign, capabilities),
       message:
-        "Campaign cost updated. Profit, ROI and ROAS were recalculated.",
+        costUpdateMode === "update"
+          ? "Campaign cost updated. Campaign result, ROI and ROAS were recalculated."
+          : "Initial campaign cost saved. Campaign result, ROI and ROAS are now available.",
     });
   } catch (error) {
     console.error("Could not update campaign cost:", {
@@ -672,21 +787,21 @@ export async function action({ request }) {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
-switch (request.method.toUpperCase()) {
-  case "POST":
-    return handleCreateCampaign(request, shop, admin);
+  switch (request.method.toUpperCase()) {
+    case "POST":
+      return handleCreateCampaign(request, shop, admin);
 
-  case "PUT":
-  case "PATCH":
-    return handleUpdateCampaign(request, shop, admin);
+    case "PUT":
+    case "PATCH":
+      return handleUpdateCampaign(request, shop, admin);
 
-  case "DELETE":
-    return handleDeleteCampaign(request, shop);
+    case "DELETE":
+      return handleDeleteCampaign(request, shop);
 
-  default:
-    return Response.json(
-      { error: `Method ${request.method} not allowed` },
-      { status: 405 },
-    );
-}
+    default:
+      return Response.json(
+        { error: `Method ${request.method} not allowed` },
+        { status: 405 },
+      );
+  }
 }

@@ -1,0 +1,35 @@
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.75rem), 1fr));
+  gap: 0.65rem;
+}
+
+.metric {
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #e1e3e5;
+  border-radius: 0.65rem;
+  background: #f7f7f8;
+}
+
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.assignment {
+  padding: 1rem;
+  border: 1px solid #c9cccf;
+  border-radius: 0.75rem;
+  background: #fafbfb;
+}
+
+.noResults {
+  display: grid;
+  gap: 0.35rem;
+  padding: 2rem 1rem;
+  border: 1px dashed #c9cccf;
+  border-radius: 0.75rem;
+  text-align: center;
+}

@@ -7,10 +7,12 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 
-const scopes = (process.env.SCOPES || "read_orders")
+const requiredScopes = ["read_orders", "read_products"];
+const configuredScopes = (process.env.SCOPES || "")
   .split(",")
   .map((scope) => scope.trim())
   .filter(Boolean);
+const scopes = [...new Set([...configuredScopes, ...requiredScopes])];
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,

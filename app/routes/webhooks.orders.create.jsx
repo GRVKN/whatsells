@@ -41,7 +41,9 @@ function getCampaignToken(order) {
 }
 
 function parseMoneyToCents(value) {
-  const normalized = String(value || "0").replace(",", ".").trim();
+  const normalized = String(value || "0")
+    .replace(",", ".")
+    .trim();
   const num = Number(normalized);
 
   if (!Number.isFinite(num) || num < 0) return 0;
@@ -109,7 +111,6 @@ export async function action({ request }) {
     select: {
       id: true,
       shop: true,
-      status: true,
       publicToken: true,
     },
   });
@@ -126,22 +127,8 @@ export async function action({ request }) {
     return new Response("Campaign not found", { status: 200 });
   }
 
-  if (campaign.status !== "active") {
-    console.warn("orders/create webhook ignored: campaign inactive", {
-      shop,
-      topic,
-      orderId,
-      orderName,
-      token,
-      campaignId: campaign.id,
-    });
-
-    return new Response("Campaign inactive", { status: 200 });
-  }
-
   const alreadyTracked = await db.event.findFirst({
     where: {
-      campaignId: campaign.id,
       type: "purchase",
       orderId,
     },
@@ -167,9 +154,7 @@ export async function action({ request }) {
   );
 
   const currency =
-    clean(order?.currency) ||
-    clean(order?.presentment_currency) ||
-    null;
+    clean(order?.currency) || clean(order?.presentment_currency) || null;
 
   try {
     await db.$transaction([
@@ -178,8 +163,11 @@ export async function action({ request }) {
           campaignId: campaign.id,
           type: "purchase",
           orderId,
+          originalValueCents: valueCents,
           valueCents,
+          refundedCents: 0,
           currency,
+          isCancelled: false,
         },
       }),
 
@@ -198,6 +186,21 @@ export async function action({ request }) {
       }),
     ]);
   } catch (error) {
+    // The partial unique index on purchase orderId is the final race-safe
+    // guard. A pre-check alone cannot protect against two simultaneous webhook
+    // deliveries.
+    if (error?.code === "P2002") {
+      console.log("orders/create webhook ignored: duplicate purchase race", {
+        shop,
+        orderId,
+        orderName,
+        token,
+        campaignId: campaign.id,
+      });
+
+      return new Response("Duplicate ignored", { status: 200 });
+    }
+
     console.error("orders/create webhook attribution failed:", {
       error,
       shop,
@@ -208,7 +211,9 @@ export async function action({ request }) {
       campaignId: campaign.id,
     });
 
-    return new Response("Webhook attribution failed", { status: 200 });
+    // Shopify should retry genuine infrastructure/database failures. Returning
+    // 200 here would permanently lose the attribution.
+    return new Response("Webhook attribution failed", { status: 500 });
   }
 
   console.log("orders/create attributed successfully:", {
