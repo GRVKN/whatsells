@@ -1,6 +1,13 @@
 // app/billing.server.js
 
 import db from "./db.server";
+import {
+  formatSubscriptionPrice,
+  getActiveSubscriptionQuery,
+  getSubscriptionItems,
+  hasSubscriptionPlan,
+  resolveManagedPricingApiVersion,
+} from "./billing-partner";
 import { normalizePlanKey } from "./plans";
 
 const APP_HANDLE = process.env.SHOPIFY_APP_HANDLE || "whatsells-1";
@@ -12,8 +19,9 @@ const EXPERT_PLAN_HANDLE = process.env.SHOPIFY_EXPERT_PLAN_HANDLE || "expert";
 const APP_GID = process.env.SHOPIFY_APP_GID || "";
 const PARTNER_API_TOKEN = process.env.SHOPIFY_PARTNER_API_TOKEN || "";
 const PARTNER_ORG_ID = process.env.SHOPIFY_PARTNER_ORG_ID || "";
-const PARTNER_API_VERSION =
-  process.env.SHOPIFY_PARTNER_API_VERSION || "2026-04";
+const PARTNER_API_VERSION = resolveManagedPricingApiVersion(
+  process.env.SHOPIFY_PARTNER_API_VERSION,
+);
 
 function getStoreHandle(shop) {
   return String(shop || "")
@@ -21,12 +29,6 @@ function getStoreHandle(shop) {
     .replace(".myshopify.com", "")
     .split("/")[0]
     .trim();
-}
-
-function normalizePlanHandle(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
 }
 
 function getPartnerApiUrl() {
@@ -107,31 +109,6 @@ async function fetchShopGid(admin) {
     console.error("Admin GraphQL shop gid request failed", error);
     return null;
   }
-}
-
-function getActiveSubscriptionQuery() {
-  return `
-    query ActiveSubscription($appId: ID!, $shopId: ID!) {
-      activeSubscription(appId: $appId, shopId: $shopId) {
-        billingPeriod
-        cancelAtEndOfCycle
-        trialEndsAt
-        legacySubscriptionId
-        currentBillingCycle {
-          startTime
-          endTime
-        }
-        items {
-          handle
-          description
-          price {
-            amount
-            currencyCode
-          }
-        }
-      }
-    }
-  `;
 }
 
 async function parsePartnerResponse(response) {
@@ -230,30 +207,6 @@ async function fetchActiveSubscription({ appGid, shopGid }) {
   }
 }
 
-function getSubscriptionItems(activeSubscription) {
-  if (!activeSubscription) {
-    return [];
-  }
-
-  return Array.isArray(activeSubscription.items)
-    ? activeSubscription.items
-    : [];
-}
-
-function hasSubscriptionPlan(activeSubscription, planHandle) {
-  const normalizedWantedHandle = normalizePlanHandle(planHandle);
-  const items = getSubscriptionItems(activeSubscription);
-
-  if (!normalizedWantedHandle || !items.length) {
-    return false;
-  }
-
-  return items.some((item) => {
-    const handle = normalizePlanHandle(item?.handle);
-    return handle === normalizedWantedHandle;
-  });
-}
-
 function isBasicSubscription(activeSubscription) {
   return hasSubscriptionPlan(activeSubscription, BASIC_PLAN_HANDLE);
 }
@@ -328,9 +281,7 @@ function buildPlanResult({ shop, activeSubscription, reason }) {
     (item) => ({
       handle: item?.handle || null,
       description: item?.description || null,
-      price: item?.price
-        ? `${item.price.amount} ${item.price.currencyCode}`
-        : null,
+      price: formatSubscriptionPrice(item?.price),
     }),
   );
 
