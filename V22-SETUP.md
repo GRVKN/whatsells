@@ -9,8 +9,9 @@ variable. Add it only to the server environment.
 2. Run the two read-only preflight files:
    `prisma/preflight/attribution_duplicates.sql` and
    `prisma/preflight/expert_schema_health.sql`.
-3. Configure the Shopify managed-pricing plan at €99/month with the exact
-   handle in `SHOPIFY_EXPERT_PLAN_HANDLE` (default: `expert`).
+3. Configure the Shopify managed-pricing plan at $79/month with a 14-day free
+   trial and the exact handle in `SHOPIFY_EXPERT_PLAN_HANDLE` (default:
+   `expert`).
 4. Keep `EXPERT_AI_ENABLED=false` and run:
 
    ```bash

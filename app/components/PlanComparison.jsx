@@ -7,14 +7,20 @@ import {
   Text,
 } from "@shopify/polaris";
 
-import { PLAN_DEFINITIONS, PLAN_KEYS, normalizePlanKey } from "../plans";
+import {
+  EXPERT_PRICE_LABEL,
+  EXPERT_TRIAL_DAYS,
+  PLAN_DEFINITIONS,
+  PLAN_KEYS,
+  normalizePlanKey,
+} from "../plans";
 import styles from "../styles/plan-comparison.module.css";
 
 const PRICE_LABELS = {
   [PLAN_KEYS.FREE]: "€0",
   [PLAN_KEYS.BASIC]: "€9 / month",
   [PLAN_KEYS.PRO]: "€19 / month",
-  [PLAN_KEYS.EXPERT]: "€99 / month",
+  [PLAN_KEYS.EXPERT]: EXPERT_PRICE_LABEL,
 };
 
 const PLAN_ORDER = [
@@ -113,6 +119,11 @@ export default function PlanComparison({
                       <Text as="p" fontWeight="semibold">
                         {PRICE_LABELS[definition.key]}
                       </Text>
+                      {definition.key === PLAN_KEYS.EXPERT ? (
+                        <Text as="p" tone="subdued">
+                          {EXPERT_TRIAL_DAYS}-day free trial
+                        </Text>
+                      ) : null}
                     </BlockStack>
 
                     {isCurrent ? (

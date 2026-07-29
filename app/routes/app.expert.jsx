@@ -37,7 +37,11 @@ import { loadExpertWorkspace } from "../expert-context.server";
 import { isExpertStorageConfigured } from "../expert-storage.server";
 import { ExpertUsageLimitError } from "../expert-usage.server";
 import { formatMoneyFromCents } from "../money";
-import { getPlanCapabilities } from "../plans";
+import {
+  EXPERT_MONTHLY_PRICE_USD,
+  EXPERT_TRIAL_DAYS,
+  getPlanCapabilities,
+} from "../plans";
 import { getShopCurrency } from "../shop-currency.server";
 import { syncShopifyExpertCatalog } from "../shopify-catalog.server";
 import { authenticate } from "../shopify.server";
@@ -241,7 +245,8 @@ function LockedExpert({ expertUrl, upgradeUrl, currentPlan }) {
                       variant="primary"
                       onClick={() => window.open(targetUrl, "_top")}
                     >
-                      Choose Expert · €99/month
+                      Start {EXPERT_TRIAL_DAYS}-day free trial · $
+                      {EXPERT_MONTHLY_PRICE_USD}/month
                     </Button>
                   ) : null}
                   <Button url="/app">Back to dashboard</Button>
@@ -1087,7 +1092,9 @@ export default function ExpertPage() {
               <BlockStack gap="300">
                 <InlineStack align="space-between" gap="300" wrap>
                   <InlineStack gap="150" wrap>
-                    <Badge tone="success">Expert active · €99</Badge>
+                    <Badge tone="success">
+                      Expert active · ${EXPERT_MONTHLY_PRICE_USD}/month
+                    </Badge>
                     <Badge
                       tone={
                         snapshot.aiStatus === "enhanced" ? "info" : undefined

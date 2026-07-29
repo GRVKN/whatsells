@@ -3,12 +3,21 @@ import test from "node:test";
 
 import {
   BASIC_CAMPAIGN_LIMIT,
+  EXPERT_MONTHLY_PRICE_USD,
+  EXPERT_PRICE_LABEL,
+  EXPERT_TRIAL_DAYS,
   FREE_CAMPAIGN_LIMIT,
   buildCampaignLimitMessage,
   getCampaignCostUpdateMode,
   getPlanCapabilities,
   normalizePlanKey,
 } from "../app/plans.js";
+
+test("Expert pricing matches the Shopify managed-pricing plan", () => {
+  assert.equal(EXPERT_MONTHLY_PRICE_USD, 79);
+  assert.equal(EXPERT_PRICE_LABEL, "$79 / month");
+  assert.equal(EXPERT_TRIAL_DAYS, 14);
+});
 
 test("Free keeps core tracking and enforces the three-campaign limit", () => {
   const capabilities = getPlanCapabilities("free", FREE_CAMPAIGN_LIMIT);

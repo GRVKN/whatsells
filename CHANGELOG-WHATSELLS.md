@@ -2,8 +2,8 @@
 
 ## v22 included
 
-- One paid Expert entitlement at €99/month protects every AI route on the
-  server after a live Shopify subscription check.
+- One paid Expert entitlement at $79/month with a 14-day free trial protects
+  every AI route on the server after a live Shopify subscription check.
 - The model router assigns short shop-data questions and daily wording to
   `gpt-5.6-luna`, product/market/campaign decisions to `gpt-5.6-terra`,
   weekly deep strategy to `gpt-5.6-sol` and visuals to `gpt-image-2`.
@@ -154,8 +154,8 @@
 ## Expert included
 
 - Expert is a genuine fourth Shopify billing tier instead of an alias for Pro.
-- The default managed-pricing handle is `expert`; v22 shows the final planned
-  price of €99/month.
+- The default managed-pricing handle is `expert`; v22 shows the launch price
+  of $79/month with a 14-day free trial.
 - Expert inherits every Pro entitlement and adds a server-only daily operator.
 - The Expert route checks the live Shopify subscription before it reads,
   creates or returns any Expert analysis.
@@ -191,8 +191,8 @@
    the new migration will remove.
 4. If either data-health preflight returns invalid rows, review them before
    continuing.
-5. Create the €99/month Shopify managed-pricing Expert plan with the exact
-   handle used by `SHOPIFY_EXPERT_PLAN_HANDLE`.
+5. Create the $79/month Shopify managed-pricing Expert plan with a 14-day free
+   trial and the exact handle used by `SHOPIFY_EXPERT_PLAN_HANDLE`.
 6. Configure the variables documented in `.env.example`. Keep
    `EXPERT_AI_ENABLED=false` until an OpenAI project key is set.
 7. Run `npm run check`.
