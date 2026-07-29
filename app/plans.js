@@ -7,6 +7,9 @@ export const PLAN_KEYS = Object.freeze({
 
 export const FREE_CAMPAIGN_LIMIT = 3;
 export const BASIC_CAMPAIGN_LIMIT = 20;
+export const EXPERT_MONTHLY_PRICE_USD = 79;
+export const EXPERT_TRIAL_DAYS = 14;
+export const EXPERT_PRICE_LABEL = `$${EXPERT_MONTHLY_PRICE_USD} / month`;
 
 export const PLAN_DEFINITIONS = Object.freeze({
   [PLAN_KEYS.FREE]: Object.freeze({
