@@ -167,7 +167,7 @@ export async function syncShopifyExpertCatalog({
       where: {
         shop: normalizedShop,
         status: "ACTIVE",
-        onlineStoreUrl: { not: null },
+        onlineStoreUrl: { not: "" },
         catalogSyncedAt: { gte: goal.catalogSyncedAt },
       },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -239,7 +239,7 @@ export async function syncShopifyExpertCatalog({
     where: {
       shop: normalizedShop,
       status: "ACTIVE",
-      onlineStoreUrl: { not: null },
+      onlineStoreUrl: { not: "" },
       ...(syncedProductIds
         ? {
             shopifyProductId: {

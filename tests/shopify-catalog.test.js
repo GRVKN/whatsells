@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizeShopifyCatalogProducts } from "../app/shopify-catalog.server.js";
+import {
+  normalizeShopifyCatalogProducts,
+  syncShopifyExpertCatalog,
+} from "../app/shopify-catalog.server.js";
 
 test("Expert catalog keeps active storefront facts and normalizes money", () => {
   const products = normalizeShopifyCatalogProducts(
@@ -50,4 +53,31 @@ test("Expert catalog excludes products without a storefront URL", () => {
   );
 
   assert.deepEqual(products, []);
+});
+
+test("cached Expert catalog uses a valid filter for required storefront URLs", async () => {
+  let receivedQuery = null;
+  const catalogSyncedAt = new Date("2026-07-30T12:00:00.000Z");
+  const dbClient = {
+    expertGoal: {
+      findUnique: async () => ({ catalogSyncedAt }),
+    },
+    trackedProduct: {
+      findMany: async (query) => {
+        receivedQuery = query;
+        return [];
+      },
+    },
+  };
+
+  await syncShopifyExpertCatalog({
+    shop: "shop.example",
+    admin: {},
+    currency: "EUR",
+    now: new Date("2026-07-30T12:05:00.000Z"),
+    dbClient,
+  });
+
+  assert.deepEqual(receivedQuery.where.onlineStoreUrl, { not: "" });
+  assert.equal(receivedQuery.where.catalogSyncedAt.gte, catalogSyncedAt);
 });

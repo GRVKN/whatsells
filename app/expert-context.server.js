@@ -90,7 +90,7 @@ export async function buildExpertAiContext({
       where: {
         shop,
         status: "ACTIVE",
-        onlineStoreUrl: { not: null },
+        onlineStoreUrl: { not: "" },
       },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
       take: 250,
