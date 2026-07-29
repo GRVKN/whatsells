@@ -8,7 +8,8 @@ import { buildCumulativeCampaignResultRows } from "../analytics";
 import { getCampaignSourceLabel } from "../campaign-sources";
 import CampaignPerformanceChart from "../components/CampaignPerformanceChart.jsx";
 import InfoLabel from "../components/InfoLabel.jsx";
-import { DEFAULT_CURRENCY, formatMoneyFromCents } from "../money";
+import { DEFAULT_CURRENCY } from "../money";
+import { useI18n } from "../i18n-context";
 import {
   getCampaignCostUpdateMode,
   getPlanCapabilities,
@@ -35,37 +36,23 @@ import {
 // ----------------------
 // Formatting helpers
 // ----------------------
-function formatDateTime(value) {
-  if (!value) return "—";
-
-  try {
-    return new Intl.DateTimeFormat("de-DE", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(value));
-  } catch {
-    return "—";
-  }
-}
-
-function formatPercent(value) {
+function formatRatio(value, formatNumber) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return "—";
   }
 
-  return `${(Number(value) * 100).toFixed(1)}%`;
+  return `${formatNumber(value, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}x`;
 }
-
-function formatRatio(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "—";
-  }
-
-  return `${Number(value).toFixed(2)}x`;
-}
-function formatCostInputFromCents(cents) {
+function formatCostInputFromCents(cents, intlLocale = "de-DE") {
   const value = Number(cents || 0) / 100;
-  return value.toFixed(2).replace(".", ",");
+  return new Intl.NumberFormat(intlLocale, {
+    useGrouping: false,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 function numberOrZero(value) {
   const num = Number(value);
@@ -993,20 +980,21 @@ function ProPanel({ children }) {
 }
 
 function LockedProPanel({ plan }) {
+  const { t } = useI18n();
   return (
     <Banner tone="info">
       <BlockStack gap="200">
         <InlineStack gap="200" wrap>
-          <Badge tone="attention">Pro Analytics locked</Badge>
+          <Badge tone="attention">{t("Pro Analytics locked")}</Badge>
           <Text as="p" fontWeight="semibold">
-            Unlock the full click → add-to-cart → order funnel.
+            {t("Unlock the full click → add-to-cart → order funnel.")}
           </Text>
         </InlineStack>
 
         <Text as="p">
-          Your current plan shows campaign results like clicks, orders, revenue,
-          ROI and ROAS. Pro Analytics adds cart intent, add-to-cart rate,
-          cart-to-order rate and sharper campaign diagnosis.
+          {t(
+            "Your current plan shows campaign results like clicks, orders, revenue, ROI and ROAS. Pro Analytics adds cart intent, add-to-cart rate, cart-to-order rate and sharper campaign diagnosis.",
+          )}
         </Text>
 
         {plan?.proUrl || plan?.upgradeUrl ? (
@@ -1016,7 +1004,7 @@ function LockedProPanel({ plan }) {
               window.open(plan.proUrl || plan.upgradeUrl, "_top");
             }}
           >
-            Upgrade to Pro Analytics
+            {t("Upgrade to Pro Analytics")}
           </Button>
         ) : null}
       </BlockStack>
@@ -1025,11 +1013,12 @@ function LockedProPanel({ plan }) {
 }
 
 function LockedBasicPanel({ plan, title, description }) {
+  const { t } = useI18n();
   return (
     <Banner tone="info">
       <BlockStack gap="200">
         <InlineStack gap="200" wrap>
-          <Badge tone="attention">Basic analytics locked</Badge>
+          <Badge tone="attention">{t("Basic analytics locked")}</Badge>
 
           <Text as="p" fontWeight="semibold">
             {title}
@@ -1045,7 +1034,7 @@ function LockedBasicPanel({ plan, title, description }) {
               window.open(plan.basicUrl || plan.upgradeUrl, "_top");
             }}
           >
-            Upgrade to Basic
+            {t("Upgrade to Basic")}
           </Button>
         ) : null}
       </BlockStack>
@@ -1054,17 +1043,26 @@ function LockedBasicPanel({ plan, title, description }) {
 }
 
 function ChartTable({ rows, showProColumns, currency }) {
+  const { t, formatDate, formatMoney } = useI18n();
+  const formatDateTime = (value) =>
+    value
+      ? formatDate(value, { dateStyle: "medium", timeStyle: "short" })
+      : "—";
   return (
     <Card>
       <BlockStack gap="300">
         <Text variant="headingMd" as="h2">
-          Performance by period
+          {t("Performance by period")}
         </Text>
 
         <Text as="p" tone="subdued">
           {showProColumns
-            ? "Pro breakdown of clicks, add-to-carts, orders, revenue and the cumulative campaign result."
-            : "A breakdown of clicks, orders, revenue and the cumulative campaign result for the selected time range."}
+            ? t(
+                "Pro breakdown of clicks, add-to-carts, orders, revenue and the cumulative campaign result.",
+              )
+            : t(
+                "A breakdown of clicks, orders, revenue and the cumulative campaign result for the selected time range.",
+              )}
         </Text>
 
         {rows.length ? (
@@ -1078,45 +1076,45 @@ function ChartTable({ rows, showProColumns, currency }) {
               headings={
                 showProColumns
                   ? [
-                      "Period",
-                      "Clicks",
+                      t("Period"),
+                      t("Clicks"),
                       <InfoLabel
                         key="add-to-carts"
-                        label="Add-to-Carts"
+                        label={t("Add-to-Carts")}
                         infoKey="addToCarts"
                       />,
                       <InfoLabel
                         key="orders"
-                        label="Orders"
+                        label={t("Orders")}
                         infoKey="orders"
                       />,
                       <InfoLabel
                         key="net-revenue"
-                        label="Net revenue"
+                        label={t("Net revenue")}
                         infoKey="revenue"
                       />,
                       <InfoLabel
                         key="campaign-result"
-                        label="Cumulative result"
+                        label={t("Cumulative result")}
                         infoKey="campaignResult"
                       />,
                     ]
                   : [
-                      "Period",
-                      "Clicks",
+                      t("Period"),
+                      t("Clicks"),
                       <InfoLabel
                         key="orders"
-                        label="Orders"
+                        label={t("Orders")}
                         infoKey="orders"
                       />,
                       <InfoLabel
                         key="net-revenue"
-                        label="Net revenue"
+                        label={t("Net revenue")}
                         infoKey="revenue"
                       />,
                       <InfoLabel
                         key="campaign-result"
-                        label="Cumulative result"
+                        label={t("Cumulative result")}
                         infoKey="campaignResult"
                       />,
                     ]
@@ -1128,23 +1126,25 @@ function ChartTable({ rows, showProColumns, currency }) {
                       String(row.clicks),
                       String(row.addToCarts ?? 0),
                       String(row.orders),
-                      formatMoneyFromCents(row.revenueCents, currency),
-                      formatMoneyFromCents(row.profitCents, currency),
+                      formatMoney(row.revenueCents, currency),
+                      formatMoney(row.profitCents, currency),
                     ]
                   : [
                       formatDateTime(row.date),
                       String(row.clicks),
                       String(row.orders),
-                      formatMoneyFromCents(row.revenueCents, currency),
-                      formatMoneyFromCents(row.profitCents, currency),
+                      formatMoney(row.revenueCents, currency),
+                      formatMoney(row.profitCents, currency),
                     ],
               )}
             />
           </div>
         ) : (
           <EmptyDataState
-            title="No performance data in this period"
-            description="Use the campaign tracking link, then refresh this page after the first visit."
+            title={t("No performance data in this period")}
+            description={t(
+              "Use the campaign tracking link, then refresh this page after the first visit.",
+            )}
           />
         )}
       </BlockStack>
@@ -1158,6 +1158,18 @@ function ChartTable({ rows, showProColumns, currency }) {
 export default function CampaignDetails() {
   const location = useLocation();
   const navigate = useNavigate();
+  const {
+    t,
+    intlLocale,
+    formatDate,
+    formatMoney,
+    formatNumber,
+    formatPercent,
+  } = useI18n();
+  const formatDateTime = (value) =>
+    value
+      ? formatDate(value, { dateStyle: "medium", timeStyle: "short" })
+      : "—";
 
   const {
     loadError,
@@ -1185,7 +1197,7 @@ export default function CampaignDetails() {
   const [metric, setMetric] = useState("clicks");
   const [copyStatus, setCopyStatus] = useState("");
   const [costInput, setCostInput] = useState(
-    formatCostInputFromCents(campaign?.costCents || 0),
+    formatCostInputFromCents(campaign?.costCents || 0, intlLocale),
   );
   const [costUpdating, setCostUpdating] = useState(false);
   const [costUpdateStatus, setCostUpdateStatus] = useState("");
@@ -1203,21 +1215,21 @@ export default function CampaignDetails() {
   useEffect(() => {
     if (!campaign) return;
 
-    setCostInput(formatCostInputFromCents(campaign.costCents || 0));
-  }, [campaign?.id, campaign?.costCents]);
+    setCostInput(formatCostInputFromCents(campaign.costCents || 0, intlLocale));
+  }, [campaign?.id, campaign?.costCents, intlLocale]);
 
   if (loadError || !campaign) {
     return (
       <Page
-        title="Campaign details"
-        backAction={{ content: "Dashboard", url: "/app" }}
+        title={t("Campaign details")}
+        backAction={{ content: t("Dashboard"), url: "/app" }}
       >
         <Layout>
           <Layout.Section>
             <Banner tone="critical">
               <BlockStack gap="200">
                 <Text as="p">
-                  {loadError || "Campaign details could not be loaded."}
+                  {t(loadError || "Campaign details could not be loaded.")}
                 </Text>
 
                 <InlineStack gap="200">
@@ -1226,7 +1238,7 @@ export default function CampaignDetails() {
                       navigate(location.pathname + location.search)
                     }
                   >
-                    Try again
+                    {t("Try again")}
                   </Button>
                 </InlineStack>
               </BlockStack>
@@ -1240,22 +1252,22 @@ export default function CampaignDetails() {
   const attributedOrderRows = attributedOrders.map((event) => {
     const orderCurrency = event.currency || currency;
     const status = event.isCancelled
-      ? "Cancelled"
+      ? t("Cancelled")
       : numberOrZero(event.refundedCents) > 0
         ? numberOrZero(event.valueCents) > 0
-          ? "Partially refunded"
-          : "Refunded"
-        : "Active";
+          ? t("Partially refunded")
+          : t("Refunded")
+        : t("Active");
 
     return [
       formatDateTime(event.createdAt),
       event.orderId || "—",
       event.originalValueCents != null
-        ? formatMoneyFromCents(event.originalValueCents, orderCurrency)
+        ? formatMoney(event.originalValueCents, orderCurrency)
         : "—",
-      formatMoneyFromCents(event.refundedCents || 0, orderCurrency),
+      formatMoney(event.refundedCents || 0, orderCurrency),
       event.valueCents != null
-        ? formatMoneyFromCents(event.valueCents, orderCurrency)
+        ? formatMoney(event.valueCents, orderCurrency)
         : "—",
       status,
       orderCurrency,
@@ -1265,15 +1277,15 @@ export default function CampaignDetails() {
   const eventRows = recentEvents.map((event) => [
     formatDateTime(event.createdAt),
     event.type === "purchase"
-      ? "order"
+      ? t("order")
       : event.type === "add_to_cart"
-        ? "add-to-cart"
-        : event.type,
+        ? t("add-to-cart")
+        : t(event.type),
     event.referer || "—",
     event.lang || "—",
     event.orderId || "—",
     event.valueCents != null
-      ? formatMoneyFromCents(event.valueCents, event.currency || currency)
+      ? formatMoney(event.valueCents, event.currency || currency)
       : "—",
   ]);
 
@@ -1289,7 +1301,7 @@ export default function CampaignDetails() {
 
   async function copyTrackingLink() {
     const ok = await safeCopy(campaign.goUrl);
-    setCopyStatus(ok ? "Tracking link copied." : "Could not copy link.");
+    setCopyStatus(ok ? t("Tracking link copied.") : t("Could not copy link."));
 
     window.setTimeout(() => {
       setCopyStatus("");
@@ -1306,8 +1318,12 @@ export default function CampaignDetails() {
     if (!canUpdateCampaignCost) {
       setCostUpdateError(
         hasBasicAnalytics
-          ? "The initial cost is already set. Editing campaign costs over time is available in Pro."
-          : "Campaign cost and profitability analytics are available from Basic.",
+          ? t(
+              "The initial cost is already set. Editing campaign costs over time is available in Pro.",
+            )
+          : t(
+              "Campaign cost and profitability analytics are available from Basic.",
+            ),
       );
       return;
     }
@@ -1330,18 +1346,25 @@ export default function CampaignDetails() {
 
       if (!res.ok) {
         throw new Error(
-          data?.error || `Could not update campaign cost (${res.status})`,
+          data?.error ||
+            t("Could not update campaign cost ({status})", {
+              status: res.status,
+            }),
         );
       }
 
       setCostUpdateStatus(
         data?.message ||
-          "Campaign cost saved. Campaign result, ROI and ROAS were recalculated.",
+          t(
+            "Campaign cost saved. Campaign result, ROI and ROAS were recalculated.",
+          ),
       );
 
       navigate(location.pathname + location.search);
     } catch (error) {
-      setCostUpdateError(error?.message || "Could not update campaign cost.");
+      setCostUpdateError(
+        error?.message || t("Could not update campaign cost."),
+      );
     } finally {
       setCostUpdating(false);
     }
@@ -1351,9 +1374,9 @@ export default function CampaignDetails() {
     <Page
       title={campaign.name}
       subtitle={`${
-        campaign.product?.title || "Unassigned product"
-      } · ${getCampaignSourceLabel(campaign.sourceType)}`}
-      backAction={{ content: "Dashboard", url: "/app" }}
+        campaign.product?.title || t("Unassigned product")
+      } · ${t(getCampaignSourceLabel(campaign.sourceType))}`}
+      backAction={{ content: t("Dashboard"), url: "/app" }}
     >
       <Layout>
         <Layout.Section>
@@ -1362,7 +1385,7 @@ export default function CampaignDetails() {
               <InlineStack align="space-between" gap="400" wrap>
                 <BlockStack gap="150">
                   <Text as="p" tone="subdued">
-                    Shopify store: {campaign.shop}
+                    {t("Shopify store: {shop}", { shop: campaign.shop })}
                   </Text>
 
                   <Text variant="headingLg" as="h1">
@@ -1375,34 +1398,48 @@ export default function CampaignDetails() {
                         campaign.status === "active" ? "success" : "attention"
                       }
                     >
-                      {campaign.status}
+                      {t(
+                        String(campaign.status).charAt(0).toUpperCase() +
+                          String(campaign.status).slice(1),
+                      )}
                     </Badge>
 
-                    <Badge>{getCampaignSourceLabel(campaign.sourceType)}</Badge>
+                    <Badge>
+                      {t(getCampaignSourceLabel(campaign.sourceType))}
+                    </Badge>
 
                     <Badge tone={campaign.product ? "info" : "attention"}>
-                      {campaign.product?.title || "Product not assigned"}
+                      {campaign.product?.title || t("Product not assigned")}
                     </Badge>
 
                     {hasBasicAnalytics ? (
                       <Badge tone={rankingTone}>
-                        {campaign.performanceLabel}
+                        {campaign.performanceLabel?.startsWith("Rank #")
+                          ? t("Rank #{rank}", {
+                              rank: campaign.rank,
+                            })
+                          : t(campaign.performanceLabel)}
                       </Badge>
                     ) : null}
 
                     <Badge tone={isPro ? "success" : getPlanTone(plan)}>
-                      {plan?.label || "Free"}
+                      {t(plan?.label || "Free")}
                     </Badge>
                   </InlineStack>
 
                   {hasBasicAnalytics ? (
                     campaign.rank ? (
                       <Text as="p" tone="subdued">
-                        Rank #{campaign.rank} of {campaign.totalRankedCampaigns}
+                        {t("Rank #{rank} of {count}", {
+                          rank: campaign.rank,
+                          count: campaign.totalRankedCampaigns,
+                        })}
                       </Text>
                     ) : (
                       <Text as="p" tone="subdued">
-                        Waiting for more data before ranking this campaign.
+                        {t(
+                          "Waiting for more data before ranking this campaign.",
+                        )}
                       </Text>
                     )
                   ) : null}
@@ -1411,15 +1448,17 @@ export default function CampaignDetails() {
                 <BlockStack gap="150">
                   {campaign.product?.onlineStoreUrl ? (
                     <Button url={campaign.product.onlineStoreUrl} external>
-                      Open Shopify product
+                      {t("Open Shopify product")}
                     </Button>
                   ) : null}
 
                   <Button url={campaign.goUrl} external>
-                    Open tracking link
+                    {t("Open tracking link")}
                   </Button>
 
-                  <Button onClick={copyTrackingLink}>Copy tracking link</Button>
+                  <Button onClick={copyTrackingLink}>
+                    {t("Copy tracking link")}
+                  </Button>
 
                   {copyStatus ? (
                     <Text as="p" tone="subdued">
@@ -1432,13 +1471,13 @@ export default function CampaignDetails() {
               <Card>
                 <BlockStack gap="200">
                   <Text variant="headingSm" as="h3">
-                    Tracking link
+                    {t("Tracking link")}
                   </Text>
 
                   <Text as="p" tone="subdued">
-                    Customers who open this link are redirected to the selected
-                    Shopify product. WhatSells uses the link to attribute clicks
-                    and orders to this campaign.
+                    {t(
+                      "Customers who open this link are redirected to the selected Shopify product. WhatSells uses the link to attribute clicks and orders to this campaign.",
+                    )}
                   </Text>
 
                   <div className={styles.linkValue}>
@@ -1454,47 +1493,52 @@ export default function CampaignDetails() {
                       variant={range === "live" ? "primary" : "secondary"}
                       onClick={() => changeRange("live")}
                     >
-                      Live
+                      {t("Live")}
                     </Button>
 
                     <Button
                       variant={range === "24h" ? "primary" : "secondary"}
                       onClick={() => changeRange("24h")}
                     >
-                      24h
+                      {t("24h")}
                     </Button>
 
                     <Button
                       variant={range === "7d" ? "primary" : "secondary"}
                       onClick={() => changeRange("7d")}
                     >
-                      7 days
+                      {t("7 days")}
                     </Button>
 
                     <Button
                       variant={range === "30d" ? "primary" : "secondary"}
                       onClick={() => changeRange("30d")}
                     >
-                      30 days
+                      {t("30 days")}
                     </Button>
 
                     <Button
                       variant={range === "all" ? "primary" : "secondary"}
                       onClick={() => changeRange("all")}
                     >
-                      All time
+                      {t("All time")}
                     </Button>
                   </InlineStack>
 
                   <Text as="p" tone="subdued">
-                    Current filter: {rangeLabel}
-                    {range === "live" ? " · auto refresh every 30 seconds" : ""}
+                    {t("Current filter: {range}", {
+                      range: t(rangeLabel),
+                    })}
+                    {range === "live"
+                      ? t(" · auto refresh every 30 seconds")
+                      : ""}
                   </Text>
                 </>
               ) : (
                 <Text as="p" tone="subdued">
-                  Free shows all-time core results. Basic unlocks Live, 24-hour,
-                  7-day and 30-day performance views.
+                  {t(
+                    "Free shows all-time core results. Basic unlocks Live, 24-hour, 7-day and 30-day performance views.",
+                  )}
                 </Text>
               )}
             </BlockStack>
@@ -1504,100 +1548,101 @@ export default function CampaignDetails() {
         <Layout.Section>
           <div className={styles.kpiGrid}>
             <KpiCard
-              label="Clicks"
+              label={t("Clicks")}
               value={String(rangeStats.clicks)}
-              helpText={rangeLabel}
+              helpText={t(rangeLabel)}
             />
 
             {isPro ? (
               <KpiCard
-                label="Add-to-Carts"
+                label={t("Add-to-Carts")}
                 infoKey="addToCarts"
                 value={String(rangeStats.addToCarts)}
-                helpText="Pro funnel signal"
+                helpText={t("Pro funnel signal")}
                 highlight
               />
             ) : null}
 
             <KpiCard
-              label="Orders"
+              label={t("Orders")}
               infoKey="orders"
               value={String(rangeStats.orders)}
-              helpText={rangeLabel}
+              helpText={t(rangeLabel)}
             />
 
             <KpiCard
-              label="Conversion"
+              label={t("Conversion")}
               infoKey="conversion"
               value={formatPercent(rangeStats.conversionRate)}
-              helpText="Orders divided by clicks"
+              helpText={t("Orders divided by clicks")}
             />
 
             {isPro ? (
               <>
                 <KpiCard
-                  label="Add-to-Cart Rate"
+                  label={t("Add-to-Cart Rate")}
                   infoKey="addToCartRate"
                   value={formatPercent(rangeStats.addToCartRate)}
-                  helpText="Carts divided by clicks"
+                  helpText={t("Carts divided by clicks")}
                   highlight
                 />
 
                 <KpiCard
-                  label="Cart-to-Order"
+                  label={t("Cart-to-Order")}
                   infoKey="cartToOrder"
                   value={formatPercent(rangeStats.cartToOrderRate)}
-                  helpText="Orders divided by carts"
+                  helpText={t("Orders divided by carts")}
                   highlight
                 />
               </>
             ) : null}
 
             <KpiCard
-              label="Net revenue"
+              label={t("Net revenue")}
               infoKey="revenue"
-              value={formatMoneyFromCents(rangeStats.revenueCents, currency)}
-              helpText={`${rangeLabel} · after refunds and cancellations`}
+              value={formatMoney(rangeStats.revenueCents, currency)}
+              helpText={t("{range} · after refunds and cancellations", {
+                range: t(rangeLabel),
+              })}
             />
 
             {hasBasicAnalytics ? (
               <>
                 <KpiCard
-                  label="Campaign result"
+                  label={t("Campaign result")}
                   infoKey="campaignResult"
-                  value={formatMoneyFromCents(rangeStats.profitCents, currency)}
-                  helpText="Attributed revenue minus the full campaign cost; product and operating costs are excluded."
+                  value={formatMoney(rangeStats.profitCents, currency)}
+                  helpText={t(
+                    "Attributed revenue minus the full campaign cost; product and operating costs are excluded.",
+                  )}
                 />
 
                 <KpiCard
-                  label="ROI"
+                  label={t("ROI")}
                   infoKey="roi"
                   value={formatPercent(rangeStats.roi)}
-                  helpText="Campaign result divided by campaign cost"
+                  helpText={t("Campaign result divided by campaign cost")}
                 />
 
                 <KpiCard
-                  label="ROAS"
+                  label={t("ROAS")}
                   infoKey="roas"
-                  value={formatRatio(rangeStats.roas)}
-                  helpText="Revenue divided by cost"
+                  value={formatRatio(rangeStats.roas, formatNumber)}
+                  helpText={t("Revenue divided by cost")}
                 />
 
                 <KpiCard
-                  label="Refunds"
+                  label={t("Refunds")}
                   infoKey="refunds"
-                  value={formatMoneyFromCents(
-                    rangeStats.refundedCents || 0,
-                    currency,
-                  )}
-                  helpText={rangeLabel}
+                  value={formatMoney(rangeStats.refundedCents || 0, currency)}
+                  helpText={t(rangeLabel)}
                 />
 
                 <KpiCard
-                  label="Cancelled orders"
+                  label={t("Cancelled orders")}
                   infoKey="cancelledOrders"
                   value={String(rangeStats.cancelledOrders || 0)}
-                  helpText={rangeLabel}
+                  helpText={t(rangeLabel)}
                 />
               </>
             ) : null}
@@ -1608,8 +1653,10 @@ export default function CampaignDetails() {
           <Layout.Section>
             <LockedBasicPanel
               plan={plan}
-              title="Unlock profitability and time-range analysis."
-              description="Basic adds campaign cost, campaign result, ROI, ROAS, campaign ranking, detailed orders and charts for Live, 24 hours, 7 days, 30 days and all time."
+              title={t("Unlock profitability and time-range analysis.")}
+              description={t(
+                "Basic adds campaign cost, campaign result, ROI, ROAS, campaign ranking, detailed orders and charts for Live, 24 hours, 7 days, 30 days and all time.",
+              )}
             />
           </Layout.Section>
         ) : null}
@@ -1619,40 +1666,40 @@ export default function CampaignDetails() {
             <ProPanel>
               <BlockStack gap="300">
                 <InlineStack gap="200" wrap>
-                  <Badge tone="success">Pro Analytics</Badge>
+                  <Badge tone="success">{t("Pro Analytics")}</Badge>
 
                   <Text variant="headingMd" as="h2">
-                    Click → Add-to-Cart → Order funnel
+                    {t("Click → Add-to-Cart → Order funnel")}
                   </Text>
                 </InlineStack>
 
                 <Text as="p" tone="subdued">
-                  Pro separates attention from intent. Clicks show traffic,
-                  add-to-carts show buying interest, and orders show final
-                  conversion.
+                  {t(
+                    "Pro separates attention from intent. Clicks show traffic, add-to-carts show buying interest, and orders show final conversion.",
+                  )}
                 </Text>
 
                 <div className={styles.kpiGrid}>
                   <KpiCard
-                    label="Clicks"
+                    label={t("Clicks")}
                     value={String(rangeStats.clicks)}
-                    helpText="Traffic"
+                    helpText={t("Traffic")}
                     highlight
                   />
 
                   <KpiCard
-                    label="Add-to-Carts"
+                    label={t("Add-to-Carts")}
                     infoKey="addToCarts"
                     value={String(rangeStats.addToCarts)}
-                    helpText="Buying intent"
+                    helpText={t("Buying intent")}
                     highlight
                   />
 
                   <KpiCard
-                    label="Orders"
+                    label={t("Orders")}
                     infoKey="orders"
                     value={String(rangeStats.orders)}
-                    helpText="Final conversion"
+                    helpText={t("Final conversion")}
                     highlight
                   />
                 </div>
@@ -1669,20 +1716,26 @@ export default function CampaignDetails() {
               <BlockStack gap="300">
                 <InlineStack gap="200" wrap>
                   <Badge tone={isPro ? "success" : "info"}>
-                    {isPro ? "Pro Cost Control" : "Basic profitability setup"}
+                    {isPro
+                      ? t("Pro Cost Control")
+                      : t("Basic profitability setup")}
                   </Badge>
 
                   <Text variant="headingMd" as="h2">
                     {isPro
-                      ? "Adjust campaign costs over time"
-                      : "Set the initial campaign cost"}
+                      ? t("Adjust campaign costs over time")
+                      : t("Set the initial campaign cost")}
                   </Text>
                 </InlineStack>
 
                 <Text as="p" tone="subdued">
                   {isPro
-                    ? "Update the campaign cost when TikTok, Meta, Google, influencer or offline printing costs change. WhatSells recalculates the campaign result, ROI, ROAS and campaign diagnosis from the new cost."
-                    : "This campaign was created before Basic profitability analytics were active. Add its initial total cost once to calculate campaign result, ROI and ROAS. Later cost changes require Pro."}
+                    ? t(
+                        "Update the campaign cost when TikTok, Meta, Google, influencer or offline printing costs change. WhatSells recalculates the campaign result, ROI, ROAS and campaign diagnosis from the new cost.",
+                      )
+                    : t(
+                        "This campaign was created before Basic profitability analytics were active. Add its initial total cost once to calculate campaign result, ROI and ROAS. Later cost changes require Pro.",
+                      )}
                 </Text>
 
                 <div className={styles.costForm}>
@@ -1690,18 +1743,22 @@ export default function CampaignDetails() {
                     <TextField
                       label={
                         <InfoLabel
-                          label={`Campaign cost (${currency})`}
+                          label={t("Campaign cost ({currency})", {
+                            currency,
+                          })}
                           infoKey="campaignCost"
                         />
                       }
                       value={costInput}
                       onChange={setCostInput}
                       autoComplete="off"
-                      placeholder="e.g. 187,50"
+                      placeholder={t("e.g. 187,50")}
                       helpText={
                         isPro
-                          ? "Use the current total cost for this campaign."
-                          : "Save the total campaign cost carefully; Basic can set this initial value once."
+                          ? t("Use the current total cost for this campaign.")
+                          : t(
+                              "Save the total campaign cost carefully; Basic can set this initial value once.",
+                            )
                       }
                     />
                   </div>
@@ -1711,7 +1768,7 @@ export default function CampaignDetails() {
                     onClick={updateCampaignCost}
                     loading={costUpdating}
                   >
-                    {isPro ? "Update cost" : "Save initial cost"}
+                    {isPro ? t("Update cost") : t("Save initial cost")}
                   </Button>
                 </div>
 
@@ -1729,40 +1786,36 @@ export default function CampaignDetails() {
 
                 <div className={styles.kpiGrid}>
                   <KpiCard
-                    label="Current cost"
+                    label={t("Current cost")}
                     infoKey="campaignCost"
-                    value={formatMoneyFromCents(
-                      campaign.costCents || 0,
-                      currency,
-                    )}
-                    helpText="Used for campaign result, ROI and ROAS"
+                    value={formatMoney(campaign.costCents || 0, currency)}
+                    helpText={t("Used for campaign result, ROI and ROAS")}
                     highlight
                   />
 
                   <KpiCard
-                    label="Campaign result"
+                    label={t("Campaign result")}
                     infoKey="campaignResult"
-                    value={formatMoneyFromCents(
-                      campaign.profitCents || 0,
-                      currency,
+                    value={formatMoney(campaign.profitCents || 0, currency)}
+                    helpText={t(
+                      "Revenue minus campaign cost; product and operating costs are excluded",
                     )}
-                    helpText="Revenue minus campaign cost; product and operating costs are excluded"
                     highlight
                   />
 
                   <KpiCard
-                    label="ROI"
+                    label={t("ROI")}
                     infoKey="roi"
                     value={formatPercent(campaign.roi)}
-                    helpText="Campaign result divided by campaign cost"
+                    helpText={t("Campaign result divided by campaign cost")}
                     highlight
                   />
 
                   <KpiCard
-                    label="ROAS"
+                    label={t("ROAS")}
                     infoKey="roas"
-                    value={formatRatio(campaign.roas)}
-                    helpText="Revenue divided by cost"
+                    value={formatRatio(campaign.roas, formatNumber)}
+                    helpText={t("Revenue divided by cost")}
                     highlight
                   />
                 </div>
@@ -1774,21 +1827,27 @@ export default function CampaignDetails() {
                 <InlineStack gap="200" wrap>
                   <Badge tone="attention">
                     {hasBasicAnalytics
-                      ? "Pro Cost Control locked"
-                      : "Basic profitability locked"}
+                      ? t("Pro Cost Control locked")
+                      : t("Basic profitability locked")}
                   </Badge>
 
                   <Text as="p" fontWeight="semibold">
                     {hasBasicAnalytics
-                      ? "Adjust campaign costs over time with Pro."
-                      : "Add campaign cost, campaign result, ROI and ROAS with Basic."}
+                      ? t("Adjust campaign costs over time with Pro.")
+                      : t(
+                          "Add campaign cost, campaign result, ROI and ROAS with Basic.",
+                        )}
                   </Text>
                 </InlineStack>
 
                 <Text as="p">
                   {hasBasicAnalytics
-                    ? "Your initial campaign cost is saved. Pro lets you update it later when ads keep spending or offline material gets printed again."
-                    : "Free keeps the core result simple: clicks, orders, net revenue and conversion. Basic adds the profitability layer."}
+                    ? t(
+                        "Your initial campaign cost is saved. Pro lets you update it later when ads keep spending or offline material gets printed again.",
+                      )
+                    : t(
+                        "Free keeps the core result simple: clicks, orders, net revenue and conversion. Basic adds the profitability layer.",
+                      )}
                 </Text>
 
                 {(
@@ -1807,7 +1866,9 @@ export default function CampaignDetails() {
                       );
                     }}
                   >
-                    {hasBasicAnalytics ? "Upgrade to Pro" : "Upgrade to Basic"}
+                    {hasBasicAnalytics
+                      ? t("Upgrade to Pro")
+                      : t("Upgrade to Basic")}
                   </Button>
                 ) : null}
               </BlockStack>
@@ -1820,11 +1881,13 @@ export default function CampaignDetails() {
             <Banner tone={campaignInsight.tone}>
               <BlockStack gap="100">
                 <Text variant="headingSm" as="h2">
-                  {isPro ? "Pro campaign diagnosis" : "Basic campaign insight"}:{" "}
-                  {campaignInsight.title}
+                  {isPro
+                    ? t("Pro campaign diagnosis")
+                    : t("Basic campaign insight")}
+                  : {t(campaignInsight.title)}
                 </Text>
 
-                <Text as="p">{campaignInsight.message}</Text>
+                <Text as="p">{t(campaignInsight.message)}</Text>
               </BlockStack>
             </Banner>
           </Layout.Section>
@@ -1837,11 +1900,13 @@ export default function CampaignDetails() {
                 <InlineStack align="space-between" gap="300" wrap>
                   <BlockStack gap="100">
                     <Text variant="headingMd" as="h2">
-                      {getMetricLabel(metric)} over time
+                      {t("{metric} over time", {
+                        metric: t(getMetricLabel(metric)),
+                      })}
                     </Text>
 
                     <Text as="p" tone="subdued">
-                      {rangeLabel}
+                      {t(rangeLabel)}
                     </Text>
                   </BlockStack>
 
@@ -1850,7 +1915,7 @@ export default function CampaignDetails() {
                       active={metric === "clicks"}
                       onClick={() => setMetric("clicks")}
                     >
-                      Clicks
+                      {t("Clicks")}
                     </MetricButton>
 
                     {isPro ? (
@@ -1858,7 +1923,7 @@ export default function CampaignDetails() {
                         active={metric === "addToCarts"}
                         onClick={() => setMetric("addToCarts")}
                       >
-                        Add-to-Carts
+                        {t("Add-to-Carts")}
                       </MetricButton>
                     ) : null}
 
@@ -1866,21 +1931,21 @@ export default function CampaignDetails() {
                       active={metric === "orders"}
                       onClick={() => setMetric("orders")}
                     >
-                      Orders
+                      {t("Orders")}
                     </MetricButton>
 
                     <MetricButton
                       active={metric === "revenueCents"}
                       onClick={() => setMetric("revenueCents")}
                     >
-                      Net revenue
+                      {t("Net revenue")}
                     </MetricButton>
 
                     <MetricButton
                       active={metric === "profitCents"}
                       onClick={() => setMetric("profitCents")}
                     >
-                      Cumulative result
+                      {t("Cumulative result")}
                     </MetricButton>
                   </InlineStack>
                 </InlineStack>
@@ -1912,13 +1977,13 @@ export default function CampaignDetails() {
               <BlockStack gap="300">
                 <BlockStack gap="100">
                   <Text variant="headingMd" as="h2">
-                    Attributed orders
+                    {t("Attributed orders")}
                   </Text>
 
                   <Text as="p" tone="subdued">
-                    Orders tracked through this campaign link. Refunds and
-                    cancellations are reconciled with Shopify and remain visible
-                    here for traceability.
+                    {t(
+                      "Orders tracked through this campaign link. Refunds and cancellations are reconciled with Shopify and remain visible here for traceability.",
+                    )}
                   </Text>
                 </BlockStack>
 
@@ -1935,21 +2000,23 @@ export default function CampaignDetails() {
                         "text",
                       ]}
                       headings={[
-                        "Time",
-                        "Order",
-                        "Original value",
-                        "Refunded",
-                        "Net value",
-                        "Status",
-                        "Currency",
+                        t("Time"),
+                        t("Order"),
+                        t("Original value"),
+                        t("Refunded"),
+                        t("Net value"),
+                        t("Status"),
+                        t("Currency"),
                       ]}
                       rows={attributedOrderRows}
                     />
                   </div>
                 ) : (
                   <EmptyDataState
-                    title="No attributed orders yet"
-                    description="Orders appear here after a customer completes checkout through this campaign's tracking journey."
+                    title={t("No attributed orders yet")}
+                    description={t(
+                      "Orders appear here after a customer completes checkout through this campaign's tracking journey.",
+                    )}
                   />
                 )}
               </BlockStack>
@@ -1962,7 +2029,7 @@ export default function CampaignDetails() {
             <Card>
               <BlockStack gap="300">
                 <Text variant="headingMd" as="h2">
-                  Recent tracking events
+                  {t("Recent tracking events")}
                 </Text>
 
                 {eventRows.length ? (
@@ -1977,20 +2044,22 @@ export default function CampaignDetails() {
                         "text",
                       ]}
                       headings={[
-                        "Time",
-                        "Type",
-                        "Referer",
-                        "Language",
-                        "Order",
-                        "Value",
+                        t("Time"),
+                        t("Type"),
+                        t("Referer"),
+                        t("Language"),
+                        t("Order"),
+                        t("Value"),
                       ]}
                       rows={eventRows}
                     />
                   </div>
                 ) : (
                   <EmptyDataState
-                    title="No tracking events in this period"
-                    description="Clicks and other campaign events will appear here after customers use the tracking link or QR code."
+                    title={t("No tracking events in this period")}
+                    description={t(
+                      "Clicks and other campaign events will appear here after customers use the tracking link or QR code.",
+                    )}
                   />
                 )}
               </BlockStack>
@@ -2002,22 +2071,22 @@ export default function CampaignDetails() {
           <Card>
             <BlockStack gap="400">
               <Text variant="headingMd" as="h2">
-                Campaign information
+                {t("Campaign information")}
               </Text>
               <div className={styles.tableScroll}>
                 <DataTable
                   columnContentTypes={["text", "text"]}
-                  headings={["Metric", "Value"]}
+                  headings={[t("Metric"), t("Value")]}
                   rows={[
-                    ["Plan", plan?.label || "Free"],
+                    [t("Plan"), t(plan?.label || "Free")],
                     ...(hasBasicAnalytics
                       ? [
                           [
-                            "Clicks last 7 days",
+                            t("Clicks last 7 days"),
                             String(campaign.clicks7d ?? 0),
                           ],
                           [
-                            "Clicks last 30 days",
+                            t("Clicks last 30 days"),
                             String(campaign.clicks30d ?? 0),
                           ],
                         ]
@@ -2025,28 +2094,28 @@ export default function CampaignDetails() {
                     ...(isPro
                       ? [
                           [
-                            "Add-to-Carts last 7 days",
+                            t("Add-to-Carts last 7 days"),
                             String(campaign.addToCarts7d ?? 0),
                           ],
                           [
-                            "Add-to-Carts last 30 days",
+                            t("Add-to-Carts last 30 days"),
                             String(campaign.addToCarts30d ?? 0),
                           ],
                         ]
                       : []),
-                    ["Clicks", String(campaign.clicksCount ?? 0)],
+                    [t("Clicks"), String(campaign.clicksCount ?? 0)],
                     ...(isPro
                       ? [
                           [
-                            "Add-to-Carts",
+                            t("Add-to-Carts"),
                             String(campaign.addToCartCount ?? 0),
                           ],
                           [
-                            "Add-to-Cart Rate",
+                            t("Add-to-Cart Rate"),
                             formatPercent(campaign.addToCartRate),
                           ],
                           [
-                            "Cart-to-Order Rate",
+                            t("Cart-to-Order Rate"),
                             formatPercent(campaign.cartToOrderRate),
                           ],
                         ]
@@ -2054,7 +2123,7 @@ export default function CampaignDetails() {
                     [
                       <InfoLabel
                         key="orders"
-                        label="Orders"
+                        label={t("Orders")}
                         infoKey="orders"
                       />,
                       String(campaign.ordersCount ?? 0),
@@ -2064,7 +2133,7 @@ export default function CampaignDetails() {
                           [
                             <InfoLabel
                               key="cancelled-orders"
-                              label="Cancelled orders"
+                              label={t("Cancelled orders")}
                               infoKey="cancelledOrders"
                             />,
                             String(campaign.cancelledOrdersCount ?? 0),
@@ -2074,7 +2143,7 @@ export default function CampaignDetails() {
                     [
                       <InfoLabel
                         key="conversion"
-                        label="Conversion"
+                        label={t("Conversion")}
                         infoKey="conversion"
                       />,
                       formatPercent(campaign.conversionRate),
@@ -2082,79 +2151,71 @@ export default function CampaignDetails() {
                     [
                       <InfoLabel
                         key="net-revenue"
-                        label="Net revenue"
+                        label={t("Net revenue")}
                         infoKey="revenue"
                       />,
-                      formatMoneyFromCents(
-                        campaign.revenueCents || 0,
-                        currency,
-                      ),
+                      formatMoney(campaign.revenueCents || 0, currency),
                     ],
                     ...(hasBasicAnalytics
                       ? [
                           [
                             <InfoLabel
                               key="refunds"
-                              label="Refunds"
+                              label={t("Refunds")}
                               infoKey="refunds"
                             />,
-                            formatMoneyFromCents(
-                              campaign.refundedCents || 0,
-                              currency,
-                            ),
+                            formatMoney(campaign.refundedCents || 0, currency),
                           ],
                           [
-                            "Cost",
-                            formatMoneyFromCents(
-                              campaign.costCents || 0,
-                              currency,
-                            ),
+                            t("Cost"),
+                            formatMoney(campaign.costCents || 0, currency),
                           ],
                           [
                             <InfoLabel
                               key="campaign-result"
-                              label="Campaign result"
+                              label={t("Campaign result")}
                               infoKey="campaignResult"
                             />,
-                            formatMoneyFromCents(
-                              campaign.profitCents || 0,
-                              currency,
-                            ),
+                            formatMoney(campaign.profitCents || 0, currency),
                           ],
                           [
-                            <InfoLabel key="roi" label="ROI" infoKey="roi" />,
+                            <InfoLabel
+                              key="roi"
+                              label={t("ROI")}
+                              infoKey="roi"
+                            />,
                             formatPercent(campaign.roi),
                           ],
                           [
                             <InfoLabel
                               key="roas"
-                              label="ROAS"
+                              label={t("ROAS")}
                               infoKey="roas"
                             />,
-                            formatRatio(campaign.roas),
+                            formatRatio(campaign.roas, formatNumber),
                           ],
                           [
-                            "Break-even orders",
+                            t("Break-even orders"),
                             campaign.breakEvenOrders != null
                               ? String(campaign.breakEvenOrders)
                               : "—",
                           ],
                         ]
                       : []),
-                    ["Created", formatDateTime(campaign.createdAt)],
-                    ["Updated", formatDateTime(campaign.updatedAt)],
+                    [t("Created"), formatDateTime(campaign.createdAt)],
+                    [t("Updated"), formatDateTime(campaign.updatedAt)],
                     [
-                      "Shopify product",
-                      campaign.product?.title || "Unassigned",
+                      t("Shopify product"),
+                      campaign.product?.title || t("Unassigned"),
                     ],
                     [
-                      "Shopify product ID",
+                      t("Shopify product ID"),
                       campaign.product?.shopifyProductId || "—",
                     ],
-                    ["Destination URL", campaign.targetUrl || "—"],
-                    ["Public token", campaign.publicToken || "—"],
-                    ["Tracking link", campaign.goUrl],
-                    ["Notes", campaign.notes || "—"],
+                    [t("Destination URL"), campaign.targetUrl || "—"],
+                    [t("Public token"), campaign.publicToken || "—"],
+                    [t("Tracking link"), campaign.goUrl],
+                    [t("Notes"), campaign.notes || "—"],
                   ]}
                 />
               </div>

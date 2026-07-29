@@ -18,3 +18,15 @@ test("formats the requested store currency instead of fixed euros", () => {
   assert.match(formatted, /123/);
   assert.match(formatted, /\$|USD/);
 });
+
+test("formats the same shop currency for the selected interface locale", () => {
+  const german = formatMoneyFromCents(123_456, "EUR", {
+    locale: "de-DE",
+  });
+  const english = formatMoneyFromCents(123_456, "EUR", {
+    locale: "en-US",
+  });
+
+  assert.match(german, /1\.234,56/);
+  assert.match(english, /1,234\.56/);
+});

@@ -12,32 +12,26 @@ import {
 } from "@shopify/polaris";
 import { ProductIcon } from "@shopify/polaris-icons";
 
-import { formatMoneyFromCents } from "../money";
+import { useI18n } from "../i18n-context";
 import ProductPickerField from "./ProductPickerField.jsx";
 import styles from "../styles/product-groups.module.css";
 
-function formatPercent(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "—";
-  }
-
-  return `${(Number(value) * 100).toFixed(1)}%`;
+function productTitle(group, t) {
+  return group.product?.title || t("Unassigned campaigns");
 }
 
-function productTitle(group) {
-  return group.product?.title || "Unassigned campaigns";
-}
-
-function productDescription(group) {
+function productDescription(group, t) {
   if (group.product) {
-    return `${group.campaigns.length} campaign${
-      group.campaigns.length === 1 ? "" : "s"
-    } · ${group.channels.length} channel${
-      group.channels.length === 1 ? "" : "s"
+    const campaigns = group.campaigns.length;
+    const channels = group.channels.length;
+    const key = `${campaigns === 1 ? "{campaigns} campaign" : "{campaigns} campaigns"} · ${
+      channels === 1 ? "{channels} channel" : "{channels} channels"
     }`;
+
+    return t(key, { campaigns, channels });
   }
 
-  return "Existing campaigns that still need a Shopify product";
+  return t("Existing campaigns that still need a Shopify product");
 }
 
 function ProductMetric({ label, value }) {
@@ -66,15 +60,16 @@ export default function ProductCampaignGroups({
   onAssignProduct,
 }) {
   const [assigningCampaignId, setAssigningCampaignId] = useState("");
+  const { t, formatMoney, formatPercent } = useI18n();
 
   if (!groups.length) {
     return (
       <div className={styles.noResults}>
         <Text variant="headingSm" as="h3">
-          No matching products or campaigns
+          {t("No matching products or campaigns")}
         </Text>
         <Text as="p" tone="subdued">
-          Change the search or filters to show your product groups again.
+          {t("Change the search or filters to show your product groups again.")}
         </Text>
       </div>
     );
@@ -87,25 +82,25 @@ export default function ProductCampaignGroups({
           const actions = (
             <InlineStack gap="150" wrap>
               <Button size="slim" onClick={() => onCopyLink(campaign)}>
-                Copy link
+                {t("Copy link")}
               </Button>
 
               <Link
                 to={`/app/campaigns/${campaign.id}${embeddedQuery}`}
                 style={{ textDecoration: "none" }}
               >
-                <Button size="slim">Details</Button>
+                <Button size="slim">{t("Details")}</Button>
               </Link>
 
               <Button size="slim" onClick={() => onOpenQr(campaign)}>
-                QR code
+                {t("QR code")}
               </Button>
 
               <Button
                 size="slim"
                 onClick={() => setAssigningCampaignId(campaign.id)}
               >
-                {campaign.product ? "Change product" : "Assign product"}
+                {campaign.product ? t("Change product") : t("Assign product")}
               </Button>
 
               <Button
@@ -113,7 +108,7 @@ export default function ProductCampaignGroups({
                 tone="critical"
                 onClick={() => onDelete(campaign.id, campaign.name)}
               >
-                Delete
+                {t("Delete")}
               </Button>
             </InlineStack>
           );
@@ -126,7 +121,10 @@ export default function ProductCampaignGroups({
               <Badge
                 tone={campaign.status === "active" ? "success" : "attention"}
               >
-                {campaign.status}
+                {t(
+                  String(campaign.status).charAt(0).toUpperCase() +
+                    String(campaign.status).slice(1),
+                )}
               </Badge>
             </BlockStack>,
             sourceLabelByValue[campaign.sourceType] ||
@@ -134,11 +132,11 @@ export default function ProductCampaignGroups({
               "—",
             campaign.clicksCount ?? 0,
             campaign.ordersCount ?? 0,
-            formatMoneyFromCents(campaign.revenueCents || 0, currency),
+            formatMoney(campaign.revenueCents || 0, currency),
             ...(hasProFunnel ? [campaign.addToCartCount ?? 0] : []),
             ...(hasBasicAnalytics
               ? [
-                  formatMoneyFromCents(
+                  formatMoney(
                     campaign.profitCents ??
                       (campaign.revenueCents || 0) - (campaign.costCents || 0),
                     currency,
@@ -169,30 +167,33 @@ export default function ProductCampaignGroups({
                     alt={
                       group.product?.imageAlt ||
                       group.product?.title ||
-                      "Unassigned campaigns"
+                      t("Unassigned campaigns")
                     }
                     size="medium"
                   />
 
                   <BlockStack gap="100">
                     <Text variant="headingMd" as="h3">
-                      {productTitle(group)}
+                      {productTitle(group, t)}
                     </Text>
 
                     <Text as="p" tone="subdued">
-                      {productDescription(group)}
+                      {productDescription(group, t)}
                     </Text>
 
                     <InlineStack gap="100" wrap>
                       {hasBasicAnalytics && group.isTopProduct ? (
-                        <Badge tone="success">Top product</Badge>
+                        <Badge tone="success">{t("Top product")}</Badge>
                       ) : null}
 
                       {hasBasicAnalytics &&
                       group.rank &&
                       !group.isTopProduct ? (
                         <Badge>
-                          Product #{group.rank} of {group.assignedProductCount}
+                          {t("Product #{rank} of {count}", {
+                            rank: group.rank,
+                            count: group.assignedProductCount,
+                          })}
                         </Badge>
                       ) : null}
 
@@ -207,48 +208,42 @@ export default function ProductCampaignGroups({
 
                 {group.product?.onlineStoreUrl ? (
                   <Button url={group.product.onlineStoreUrl} external>
-                    Open product
+                    {t("Open product")}
                   </Button>
                 ) : null}
               </InlineStack>
 
               <div className={styles.metricGrid}>
                 <ProductMetric
-                  label="Clicks"
+                  label={t("Clicks")}
                   value={String(group.totals.clicksCount)}
                 />
                 {hasProFunnel ? (
                   <ProductMetric
-                    label="Add-to-Carts"
+                    label={t("Add-to-Carts")}
                     value={String(group.totals.addToCartCount)}
                   />
                 ) : null}
                 <ProductMetric
-                  label="Orders"
+                  label={t("Orders")}
                   value={String(group.totals.ordersCount)}
                 />
                 <ProductMetric
-                  label="Net revenue"
-                  value={formatMoneyFromCents(
-                    group.totals.revenueCents,
-                    currency,
-                  )}
+                  label={t("Net revenue")}
+                  value={formatMoney(group.totals.revenueCents, currency)}
                 />
                 <ProductMetric
-                  label="Conversion"
+                  label={t("Conversion")}
                   value={formatPercent(group.totals.conversionRate)}
                 />
                 {hasBasicAnalytics ? (
                   <>
                     <ProductMetric
-                      label="Campaign result"
-                      value={formatMoneyFromCents(
-                        group.totals.resultCents,
-                        currency,
-                      )}
+                      label={t("Campaign result")}
+                      value={formatMoney(group.totals.resultCents, currency)}
                     />
                     <ProductMetric
-                      label="ROI"
+                      label={t("ROI")}
                       value={formatPercent(group.totals.roi)}
                     />
                   </>
@@ -268,14 +263,16 @@ export default function ProductCampaignGroups({
                     "text",
                   ]}
                   headings={[
-                    "Campaign",
-                    "Channel",
-                    "Clicks",
-                    "Orders",
-                    "Net revenue",
-                    ...(hasProFunnel ? ["Add-to-Carts"] : []),
-                    ...(hasBasicAnalytics ? ["Campaign result", "ROI"] : []),
-                    "Actions",
+                    t("Campaign"),
+                    t("Channel"),
+                    t("Clicks"),
+                    t("Orders"),
+                    t("Net revenue"),
+                    ...(hasProFunnel ? [t("Add-to-Carts")] : []),
+                    ...(hasBasicAnalytics
+                      ? [t("Campaign result"), t("ROI")]
+                      : []),
+                    t("Actions"),
                   ]}
                   rows={rows}
                 />
@@ -287,12 +284,17 @@ export default function ProductCampaignGroups({
                     <InlineStack align="space-between" gap="200" wrap>
                       <BlockStack gap="050">
                         <Text as="p" fontWeight="semibold">
-                          {assigningCampaign.product ? "Change" : "Assign"} the
-                          product for “{assigningCampaign.name}”
+                          {t(
+                            assigningCampaign.product
+                              ? "Change the product for “{campaign}”"
+                              : "Assign the product for “{campaign}”",
+                            { campaign: assigningCampaign.name },
+                          )}
                         </Text>
                         <Text as="p" tone="subdued">
-                          Its existing clicks, orders and revenue stay
-                          unchanged.
+                          {t(
+                            "Its existing clicks, orders and revenue stay unchanged.",
+                          )}
                         </Text>
                       </BlockStack>
 
@@ -300,7 +302,7 @@ export default function ProductCampaignGroups({
                         size="slim"
                         onClick={() => setAssigningCampaignId("")}
                       >
-                        Cancel
+                        {t("Cancel")}
                       </Button>
                     </InlineStack>
 

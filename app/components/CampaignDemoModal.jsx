@@ -7,6 +7,7 @@ import {
   Modal,
   Text,
 } from "@shopify/polaris";
+import { useI18n } from "../i18n-context";
 
 function DemoStep({ number, title, children }) {
   return (
@@ -27,6 +28,7 @@ function DemoStep({ number, title, children }) {
 }
 
 export default function CampaignDemoModal({ open, onClose, onStart }) {
+  const { t } = useI18n();
   function startOwnCampaign() {
     onClose();
     onStart();
@@ -36,14 +38,14 @@ export default function CampaignDemoModal({ open, onClose, onStart }) {
     <Modal
       open={open}
       onClose={onClose}
-      title="Example campaign"
+      title={t("Example campaign")}
       primaryAction={{
-        content: "Create my own campaign",
+        content: t("Create my own campaign"),
         onAction: startOwnCampaign,
       }}
       secondaryActions={[
         {
-          content: "Close",
+          content: t("Close"),
           onAction: onClose,
         },
       ]}
@@ -54,39 +56,41 @@ export default function CampaignDemoModal({ open, onClose, onStart }) {
           <InlineStack align="space-between" gap="200" wrap>
             <BlockStack gap="100">
               <Text variant="headingMd" as="h2">
-                Spring flyer · garden collection
+                {t("Spring flyer · garden collection")}
               </Text>
 
               <Text as="p" tone="subdued">
-                A complete example from destination to measurable result.
+                {t("A complete example from destination to measurable result.")}
               </Text>
             </BlockStack>
 
-            <Badge tone="attention">Demo data only</Badge>
+            <Badge tone="attention">{t("Demo data only")}</Badge>
           </InlineStack>
 
-          <DemoStep number="1" title="Campaign setup">
+          <DemoStep number="1" title={t("Campaign setup")}>
             <Text as="p">
-              Channel: Flyer · Product: Garden chair · Cost: €120
+              {t("Channel: Flyer · Product: Garden chair · Cost: €120")}
             </Text>
             <Text as="p" tone="subdued">
-              WhatSells creates one unique tracking link and a downloadable QR
-              code for the printed flyer.
+              {t(
+                "WhatSells creates one unique tracking link and a downloadable QR code for the printed flyer.",
+              )}
             </Text>
           </DemoStep>
 
-          <DemoStep number="2" title="Distribution">
+          <DemoStep number="2" title={t("Distribution")}>
             <Text as="p">
-              The QR code is printed on 500 flyers. Every scan passes through
-              the campaign link before the visitor reaches the collection.
+              {t(
+                "The QR code is printed on 500 flyers. Every scan passes through the campaign link before the visitor reaches the collection.",
+              )}
             </Text>
           </DemoStep>
 
-          <DemoStep number="3" title="Measured result">
+          <DemoStep number="3" title={t("Measured result")}>
             <InlineStack gap="500" wrap>
               <BlockStack gap="050">
                 <Text as="p" tone="subdued">
-                  Clicks
+                  {t("Clicks")}
                 </Text>
                 <Text variant="headingLg" as="p">
                   184
@@ -95,7 +99,7 @@ export default function CampaignDemoModal({ open, onClose, onStart }) {
 
               <BlockStack gap="050">
                 <Text as="p" tone="subdued">
-                  Orders
+                  {t("Orders")}
                 </Text>
                 <Text variant="headingLg" as="p">
                   11
@@ -104,7 +108,7 @@ export default function CampaignDemoModal({ open, onClose, onStart }) {
 
               <BlockStack gap="050">
                 <Text as="p" tone="subdued">
-                  Net revenue
+                  {t("Net revenue")}
                 </Text>
                 <Text variant="headingLg" as="p">
                   €642
@@ -113,7 +117,7 @@ export default function CampaignDemoModal({ open, onClose, onStart }) {
 
               <BlockStack gap="050">
                 <Text as="p" tone="subdued">
-                  Campaign result
+                  {t("Campaign result")}
                 </Text>
                 <Text variant="headingLg" as="p">
                   €522
@@ -124,14 +128,16 @@ export default function CampaignDemoModal({ open, onClose, onStart }) {
             <Divider />
 
             <Text as="p" tone="subdued">
-              Campaign result is net attributed revenue minus the €120 campaign
-              cost. Product and operating costs are not included.
+              {t(
+                "Campaign result is net attributed revenue minus the €120 campaign cost. Product and operating costs are not included.",
+              )}
             </Text>
           </DemoStep>
 
           <Text as="p" tone="subdued">
-            This preview is never saved, never counted against a plan limit and
-            never appears in your analytics.
+            {t(
+              "This preview is never saved, never counted against a plan limit and never appears in your analytics.",
+            )}
           </Text>
         </BlockStack>
       </Modal.Section>

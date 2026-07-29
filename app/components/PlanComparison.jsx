@@ -14,6 +14,7 @@ import {
   PLAN_KEYS,
   normalizePlanKey,
 } from "../plans";
+import { useI18n } from "../i18n-context";
 import styles from "../styles/plan-comparison.module.css";
 
 const PRICE_LABELS = {
@@ -36,11 +37,11 @@ function openTop(url) {
   }
 }
 
-function getPlanAction({ planKey, currentPlanKey, urls }) {
+function getPlanAction({ planKey, currentPlanKey, urls, t }) {
   if (planKey === currentPlanKey) {
     return urls.upgradeUrl
       ? {
-          label: "Manage plan",
+          label: t("Manage plan"),
           url: urls.upgradeUrl,
           variant: "secondary",
         }
@@ -57,7 +58,9 @@ function getPlanAction({ planKey, currentPlanKey, urls }) {
 
   if (targetIndex > currentIndex) {
     return {
-      label: `Choose ${PLAN_DEFINITIONS[planKey]?.label || "plan"}`,
+      label: t("Choose {plan}", {
+        plan: PLAN_DEFINITIONS[planKey]?.label || t("plan"),
+      }),
       url: planUrl || urls.upgradeUrl,
       variant: targetIndex === currentIndex + 1 ? "primary" : "secondary",
     };
@@ -73,6 +76,7 @@ export default function PlanComparison({
   proUrl,
   expertUrl,
 }) {
+  const { t } = useI18n();
   const currentPlanKey = normalizePlanKey(
     capabilities?.planKey || capabilities?.plan,
   );
@@ -83,13 +87,13 @@ export default function PlanComparison({
       <BlockStack gap="400">
         <BlockStack gap="100">
           <Text variant="headingMd" as="h2">
-            Choose the level of detail you need
+            {t("Choose the level of detail you need")}
           </Text>
 
           <Text as="p" tone="subdued">
-            Every plan tracks real orders. Paid plans add deeper analysis, and
-            Expert adds a protected AI copilot, live market scans, campaign
-            packages and flyer generation.
+            {t(
+              "Every plan tracks real orders. Paid plans add deeper analysis, and Expert adds a protected AI copilot, live market scans, campaign packages and flyer generation.",
+            )}
           </Text>
         </BlockStack>
 
@@ -100,6 +104,7 @@ export default function PlanComparison({
               planKey: definition.key,
               currentPlanKey,
               urls,
+              t,
             });
 
             return (
@@ -113,31 +118,33 @@ export default function PlanComparison({
                   <InlineStack align="space-between" gap="200" wrap>
                     <BlockStack gap="050">
                       <Text variant="headingMd" as="h3">
-                        {definition.label}
+                        {t(definition.label)}
                       </Text>
 
                       <Text as="p" fontWeight="semibold">
-                        {PRICE_LABELS[definition.key]}
+                        {t(PRICE_LABELS[definition.key])}
                       </Text>
                       {definition.key === PLAN_KEYS.EXPERT ? (
                         <Text as="p" tone="subdued">
-                          {EXPERT_TRIAL_DAYS}-day free trial
+                          {t("{days}-day free trial", {
+                            days: EXPERT_TRIAL_DAYS,
+                          })}
                         </Text>
                       ) : null}
                     </BlockStack>
 
                     {isCurrent ? (
-                      <Badge tone="success">Current plan</Badge>
+                      <Badge tone="success">{t("Current plan")}</Badge>
                     ) : null}
                   </InlineStack>
 
                   <Text as="p" tone="subdued">
-                    {definition.summary}
+                    {t(definition.summary)}
                   </Text>
 
                   <ul className={styles.featureList}>
                     {definition.features.map((feature) => (
-                      <li key={feature}>{feature}</li>
+                      <li key={feature}>{t(feature)}</li>
                     ))}
                   </ul>
 
@@ -156,9 +163,9 @@ export default function PlanComparison({
         </div>
 
         <Text as="p" tone="subdued">
-          Billing changes are confirmed in Shopify before they become active.
-          Downgrading never deletes existing campaign data, but features and new
-          campaign creation follow the active plan limits.
+          {t(
+            "Billing changes are confirmed in Shopify before they become active. Downgrading never deletes existing campaign data, but features and new campaign creation follow the active plan limits.",
+          )}
         </Text>
       </BlockStack>
     </Card>

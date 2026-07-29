@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { Button, InlineStack, Modal, BlockStack, Text } from "@shopify/polaris";
+import { useI18n } from "../i18n-context";
 
 async function safeCopy(text) {
   try {
@@ -44,6 +45,7 @@ export default function CampaignQr({
   value,
   title = "Campaign QR code",
 }) {
+  const { t } = useI18n();
   const [dataUrl, setDataUrl] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
 
@@ -89,7 +91,7 @@ export default function CampaignQr({
 
   async function copyTrackingLink() {
     const ok = await safeCopy(value || "");
-    setCopyStatus(ok ? "Tracking link copied." : "Could not copy link.");
+    setCopyStatus(ok ? t("Tracking link copied.") : t("Could not copy link."));
 
     window.setTimeout(() => {
       setCopyStatus("");
@@ -100,15 +102,15 @@ export default function CampaignQr({
     <Modal
       open={open}
       onClose={onClose}
-      title={title}
+      title={t(title)}
       primaryAction={{
-        content: "Download QR code",
+        content: t("Download QR code"),
         onAction: downloadQrCode,
         disabled: !dataUrl,
       }}
       secondaryActions={[
         {
-          content: "Close",
+          content: t("Close"),
           onAction: onClose,
         },
       ]}
@@ -117,13 +119,15 @@ export default function CampaignQr({
         <BlockStack gap="400">
           <BlockStack gap="100">
             <Text as="p" tone="subdued">
-              Customers who scan this QR code will be redirected through your
-              WhatSells tracking link.
+              {t(
+                "Customers who scan this QR code will be redirected through your WhatSells tracking link.",
+              )}
             </Text>
 
             <Text as="p" tone="subdued">
-              Use it on flyers, packaging inserts, printed cards or offline
-              campaigns.
+              {t(
+                "Use it on flyers, packaging inserts, printed cards or offline campaigns.",
+              )}
             </Text>
           </BlockStack>
 
@@ -139,7 +143,7 @@ export default function CampaignQr({
             {dataUrl ? (
               <img
                 src={dataUrl}
-                alt={`${title} QR code`}
+                alt={`${t(title)} ${t("QR code")}`}
                 style={{
                   width: 320,
                   height: 320,
@@ -147,14 +151,14 @@ export default function CampaignQr({
                 }}
               />
             ) : (
-              <Text as="p">QR code could not be generated.</Text>
+              <Text as="p">{t("QR code could not be generated.")}</Text>
             )}
           </div>
 
           <BlockStack gap="200">
             <InlineStack gap="200">
               <Button onClick={copyTrackingLink} disabled={!value}>
-                Copy tracking link
+                {t("Copy tracking link")}
               </Button>
             </InlineStack>
 

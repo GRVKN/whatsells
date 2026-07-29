@@ -5,18 +5,19 @@ import {
   formatCompactMoneyFromCents,
   formatMoneyFromCents,
 } from "../money";
+import { useI18n } from "../i18n-context";
 
 const CHART_HEIGHT = 320;
 const WRAPPER_HEIGHT = 340;
 const MIN_CHART_WIDTH = 320;
 
-function formatDateLabel(value) {
+function formatDateLabel(value, intlLocale) {
   if (!value) return "—";
 
   try {
     const date = new Date(value);
 
-    return new Intl.DateTimeFormat("de-DE", {
+    return new Intl.DateTimeFormat(intlLocale, {
       day: "2-digit",
       month: "2-digit",
     }).format(date);
@@ -25,14 +26,14 @@ function formatDateLabel(value) {
   }
 }
 
-function formatTooltipLabel(value, bucket) {
+function formatTooltipLabel(value, bucket, intlLocale) {
   if (!value) return "—";
 
   try {
     const date = new Date(value);
 
     if (bucket === "minute" || bucket === "hour") {
-      return new Intl.DateTimeFormat("de-DE", {
+      return new Intl.DateTimeFormat(intlLocale, {
         day: "2-digit",
         month: "2-digit",
         hour: "2-digit",
@@ -40,7 +41,7 @@ function formatTooltipLabel(value, bucket) {
       }).format(date);
     }
 
-    return new Intl.DateTimeFormat("de-DE", {
+    return new Intl.DateTimeFormat(intlLocale, {
       dateStyle: "medium",
     }).format(date);
   } catch {
@@ -48,11 +49,11 @@ function formatTooltipLabel(value, bucket) {
   }
 }
 
-function formatValue(value, metric, currency) {
+function formatValue(value, metric, currency, intlLocale) {
   const num = Number(value || 0);
 
   if (metric === "revenueCents" || metric === "profitCents") {
-    return formatMoneyFromCents(num, currency);
+    return formatMoneyFromCents(num, currency, { locale: intlLocale });
   }
 
   if (metric === "conversionRate") {
@@ -66,11 +67,11 @@ function formatValue(value, metric, currency) {
   return String(value ?? 0);
 }
 
-function formatYAxisValue(value, metric, currency) {
+function formatYAxisValue(value, metric, currency, intlLocale) {
   const num = Number(value || 0);
 
   if (metric === "revenueCents" || metric === "profitCents") {
-    return formatCompactMoneyFromCents(num, currency);
+    return formatCompactMoneyFromCents(num, currency, { locale: intlLocale });
   }
 
   if (metric === "conversionRate") {
@@ -94,7 +95,15 @@ function getChartColor(metric) {
   return "#22c55e";
 }
 
-function CustomTooltip({ active, payload, label, metric, bucket, currency }) {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  metric,
+  bucket,
+  currency,
+  intlLocale,
+}) {
   if (!active || !payload?.length) return null;
 
   const value = payload[0]?.value ?? 0;
@@ -116,7 +125,7 @@ function CustomTooltip({ active, payload, label, metric, bucket, currency }) {
           marginBottom: 6,
         }}
       >
-        {formatTooltipLabel(label, bucket)}
+        {formatTooltipLabel(label, bucket, intlLocale)}
       </div>
 
       <div
@@ -126,7 +135,7 @@ function CustomTooltip({ active, payload, label, metric, bucket, currency }) {
           color: "#111111",
         }}
       >
-        {formatValue(value, metric, currency)}
+        {formatValue(value, metric, currency, intlLocale)}
       </div>
     </div>
   );
@@ -139,6 +148,7 @@ export default function CampaignPerformanceChart({
   currency = DEFAULT_CURRENCY,
 }) {
   const wrapperRef = useRef(null);
+  const { t, intlLocale } = useI18n();
 
   const [charts, setCharts] = useState(null);
   const [chartError, setChartError] = useState("");
@@ -225,7 +235,7 @@ export default function CampaignPerformanceChart({
           color: "#6d7175",
         }}
       >
-        {chartError}
+        {t(chartError)}
       </div>
     );
   }
@@ -244,7 +254,7 @@ export default function CampaignPerformanceChart({
           color: "#6d7175",
         }}
       >
-        No data available
+        {t("No data available")}
       </div>
     );
   }
@@ -292,7 +302,7 @@ export default function CampaignPerformanceChart({
           tickFormatter={(value) => {
             if (bucket === "minute" || bucket === "hour") {
               try {
-                return new Intl.DateTimeFormat("de-DE", {
+                return new Intl.DateTimeFormat(intlLocale, {
                   hour: "2-digit",
                   minute: "2-digit",
                 }).format(new Date(value));
@@ -301,7 +311,7 @@ export default function CampaignPerformanceChart({
               }
             }
 
-            return formatDateLabel(value);
+            return formatDateLabel(value, intlLocale);
           }}
           tick={{ fontSize: 12, fill: "#6d7175" }}
           axisLine={false}
@@ -314,7 +324,9 @@ export default function CampaignPerformanceChart({
           axisLine={false}
           tickLine={false}
           width={64}
-          tickFormatter={(value) => formatYAxisValue(value, metric, currency)}
+          tickFormatter={(value) =>
+            formatYAxisValue(value, metric, currency, intlLocale)
+          }
         />
 
         <Tooltip
@@ -323,6 +335,7 @@ export default function CampaignPerformanceChart({
               metric={metric}
               bucket={bucket}
               currency={currency}
+              intlLocale={intlLocale}
             />
           }
         />

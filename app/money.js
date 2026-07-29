@@ -31,20 +31,23 @@ export function formatMoneyFromCents(
 ) {
   const currencyCode = normalizeCurrencyCode(currency);
   const value = numberOrZero(cents) / 100;
+  const { locale = "de-DE", ...formatOptions } = options;
 
-  return new Intl.NumberFormat("de-DE", {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currencyCode,
-    ...options,
+    ...formatOptions,
   }).format(value);
 }
 
 export function formatCompactMoneyFromCents(
   cents,
   currency = DEFAULT_CURRENCY,
+  options = {},
 ) {
   return formatMoneyFromCents(cents, currency, {
     maximumFractionDigits: 0,
     minimumFractionDigits: 0,
+    ...options,
   });
 }

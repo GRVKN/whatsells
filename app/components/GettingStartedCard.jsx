@@ -7,6 +7,7 @@ import {
   ProgressBar,
   Text,
 } from "@shopify/polaris";
+import { useI18n } from "../i18n-context";
 
 function getNextAction(checklist) {
   return checklist.find((item) => !item.complete)?.id || "complete";
@@ -29,6 +30,7 @@ export default function GettingStartedCard({
   onViewDemo,
 }) {
   const nextAction = getNextAction(checklist);
+  const { t } = useI18n();
 
   return (
     <Card>
@@ -37,23 +39,24 @@ export default function GettingStartedCard({
           <BlockStack gap="100">
             <InlineStack gap="200" blockAlign="center" wrap>
               <Text variant="headingMd" as="h2">
-                Getting started
+                {t("Getting started")}
               </Text>
 
               <Badge tone={progress === 100 ? "success" : "info"}>
-                {progress}% complete
+                {t("{progress}% complete", { progress })}
               </Badge>
             </InlineStack>
 
             <Text as="p" tone="subdued">
-              Follow the real tracking journey from campaign to attributed
-              order.
+              {t(
+                "Follow the real tracking journey from campaign to attributed order.",
+              )}
             </Text>
           </BlockStack>
 
           <InlineStack gap="200" wrap>
-            <Button onClick={onViewDemo}>View example</Button>
-            <Button onClick={onOpenGuide}>Open guide</Button>
+            <Button onClick={onViewDemo}>{t("View example")}</Button>
+            <Button onClick={onOpenGuide}>{t("Open guide")}</Button>
           </InlineStack>
         </InlineStack>
 
@@ -70,7 +73,7 @@ export default function GettingStartedCard({
             >
               <InlineStack gap="200" blockAlign="start" wrap={false}>
                 <Badge tone={item.complete ? "success" : undefined}>
-                  {item.complete ? "Done" : String(index + 1)}
+                  {item.complete ? t("Done") : String(index + 1)}
                 </Badge>
 
                 <BlockStack gap="050">
@@ -79,11 +82,11 @@ export default function GettingStartedCard({
                     fontWeight={item.complete ? "regular" : "semibold"}
                     tone={item.complete ? "subdued" : undefined}
                   >
-                    {item.label}
+                    {t(item.label)}
                   </Text>
 
                   <Text as="p" tone="subdued">
-                    {item.description}
+                    {t(item.description)}
                   </Text>
                 </BlockStack>
               </InlineStack>
@@ -93,7 +96,7 @@ export default function GettingStartedCard({
 
         <InlineStack align="end">
           <Button variant="primary" onClick={() => onNextAction(nextAction)}>
-            {getNextActionLabel(nextAction)}
+            {t(getNextActionLabel(nextAction))}
           </Button>
         </InlineStack>
       </BlockStack>

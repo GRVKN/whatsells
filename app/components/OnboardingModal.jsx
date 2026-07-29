@@ -9,6 +9,7 @@ import {
   ProgressBar,
   Text,
 } from "@shopify/polaris";
+import { useI18n } from "../i18n-context";
 
 const STEPS = [
   {
@@ -44,6 +45,7 @@ export default function OnboardingModal({
   onStart,
   onViewDemo,
 }) {
+  const { t } = useI18n();
   const [stepIndex, setStepIndex] = useState(0);
   const step = STEPS[stepIndex];
   const isLastStep = stepIndex === STEPS.length - 1;
@@ -61,13 +63,13 @@ export default function OnboardingModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Welcome to WhatSells"
+      title={t("Welcome to WhatSells")}
       primaryAction={{
         content: isLastStep
           ? hasCampaigns
-            ? "View my campaigns"
-            : "Create first campaign"
-          : "Next",
+            ? t("View my campaigns")
+            : t("Create first campaign")
+          : t("Next"),
         onAction: isLastStep
           ? finishGuide
           : () => setStepIndex((value) => value + 1),
@@ -76,13 +78,13 @@ export default function OnboardingModal({
         ...(stepIndex > 0
           ? [
               {
-                content: "Back",
+                content: t("Back"),
                 onAction: () => setStepIndex((value) => value - 1),
               },
             ]
           : []),
         {
-          content: "Skip for now",
+          content: t("Skip for now"),
           onAction: onClose,
         },
       ]}
@@ -91,10 +93,10 @@ export default function OnboardingModal({
         <BlockStack gap="500">
           <BlockStack gap="200">
             <InlineStack align="space-between" blockAlign="center" gap="200">
-              <Badge tone="info">{step.eyebrow}</Badge>
+              <Badge tone="info">{t(step.eyebrow)}</Badge>
 
               <Text as="p" tone="subdued">
-                About one minute
+                {t("About one minute")}
               </Text>
             </InlineStack>
 
@@ -111,24 +113,26 @@ export default function OnboardingModal({
           >
             <BlockStack gap="300">
               <Text variant="headingLg" as="h2">
-                {step.title}
+                {t(step.title)}
               </Text>
 
-              <Text as="p">{step.description}</Text>
+              <Text as="p">{t(step.description)}</Text>
 
               <Text as="p" tone="subdued">
-                {step.detail}
+                {t(step.detail)}
               </Text>
             </BlockStack>
           </Box>
 
           <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
             <Text as="p" tone="subdued">
-              The example uses demo values and never changes your shop data.
+              {t(
+                "The example uses demo values and never changes your shop data.",
+              )}
             </Text>
 
             <Button variant="plain" onClick={onViewDemo}>
-              View example campaign
+              {t("View example campaign")}
             </Button>
           </InlineStack>
         </BlockStack>

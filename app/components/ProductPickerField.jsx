@@ -8,6 +8,7 @@ import {
   Text,
   Thumbnail,
 } from "@shopify/polaris";
+import { useI18n } from "../i18n-context";
 
 function firstPickerImage(product) {
   const image = Array.isArray(product?.images) ? product.images[0] : null;
@@ -26,6 +27,7 @@ export default function ProductPickerField({
   compact = false,
 }) {
   const shopify = useAppBridge();
+  const { t } = useI18n();
   const [opening, setOpening] = useState(false);
   const [pickerError, setPickerError] = useState("");
 
@@ -68,12 +70,14 @@ export default function ProductPickerField({
     } catch (pickerFailure) {
       console.error("Shopify product picker failed", pickerFailure);
       setPickerError(
-        "The Shopify product selector could not be opened. Refresh the app and try again.",
+        t(
+          "The Shopify product selector could not be opened. Refresh the app and try again.",
+        ),
       );
     } finally {
       setOpening(false);
     }
-  }, [onSelect, selectedProduct?.id, shopify]);
+  }, [onSelect, selectedProduct?.id, shopify, t]);
 
   return (
     <BlockStack gap="150">
@@ -99,7 +103,7 @@ export default function ProductPickerField({
                 </Text>
 
                 <Text as="p" tone="subdued">
-                  Shopify product
+                  {t("Shopify product")}
                   {selectedProduct.status
                     ? ` · ${String(selectedProduct.status).toLowerCase()}`
                     : ""}
@@ -113,7 +117,7 @@ export default function ProductPickerField({
               disabled={disabled}
               size={compact ? "slim" : "medium"}
             >
-              Change product
+              {t("Change product")}
             </Button>
           </InlineStack>
         </div>
@@ -124,18 +128,19 @@ export default function ProductPickerField({
           disabled={disabled}
           fullWidth
         >
-          Choose Shopify product
+          {t("Choose Shopify product")}
         </Button>
       )}
 
       {error || pickerError ? (
         <Text as="p" tone="critical">
-          {error || pickerError}
+          {t(error || pickerError)}
         </Text>
       ) : (
         <Text as="p" tone="subdued">
-          Select the exact product from your Shopify catalog. WhatSells creates
-          the destination automatically.
+          {t(
+            "Select the exact product from your Shopify catalog. WhatSells creates the destination automatically.",
+          )}
         </Text>
       )}
     </BlockStack>
