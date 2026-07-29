@@ -1,0 +1,153 @@
+.metricGrid,
+.scoreColumns,
+.recommendationGrid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.metricGrid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
+}
+
+.metric {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #dfe3e8;
+  border-radius: 0.875rem;
+  background: #fff;
+}
+
+.scoreColumns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recommendationGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recommendation {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #dfe3e8;
+  border-radius: 0.875rem;
+  background: #fff;
+}
+
+.featuredRecommendation {
+  padding: 1.25rem;
+  border-color: #008060;
+  box-shadow: 0 0 0 1px #008060;
+  background: linear-gradient(135deg, #f1f8f5 0%, #fff 75%);
+}
+
+.scoreRow + .scoreRow {
+  padding-top: 0.9rem;
+  border-top: 1px solid #ebebeb;
+}
+
+.safeguardList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.formGrid,
+.usageGrid,
+.draftGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  color: #303030;
+  font-weight: 600;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid #8a8a8a;
+  border-radius: 0.55rem;
+  background: #fff;
+  color: #202223;
+  font: inherit;
+  font-weight: 400;
+}
+
+.field textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.usageItem,
+.marketProduct,
+.draftCard,
+.copyBlock,
+.trackingLink {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid #dfe3e8;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.chat {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 28rem;
+  overflow-y: auto;
+}
+
+.merchantMessage,
+.assistantMessage {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 92%;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+}
+
+.merchantMessage {
+  justify-self: end;
+  background: #eaf5ff;
+}
+
+.assistantMessage {
+  justify-self: start;
+  background: #f1f8f5;
+}
+
+.sourceList {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.sourceList a {
+  color: #005bd3;
+}
+
+.trackingLink code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 52rem) {
+  .scoreColumns,
+  .recommendationGrid,
+  .formGrid,
+  .usageGrid,
+  .draftGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

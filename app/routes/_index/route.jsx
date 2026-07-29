@@ -18,16 +18,17 @@ export default function App() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>A short heading about [your app]</h1>
+        <h1 className={styles.heading}>WhatSells</h1>
         <p className={styles.text}>
-          A tagline about [your app] that describes your value proposition.
+          Track campaign links and QR codes, connect them to Shopify orders and
+          see what actually sells.
         </p>
         {showForm && (
           <Form className={styles.form} method="post" action="/auth/login">
             <label className={styles.label}>
               <span>Shop domain</span>
               <input className={styles.input} type="text" name="shop" />
-              <span>e.g: my-shop-domain.myshopify.com</span>
+              <span>e.g. my-shop-domain.myshopify.com</span>
             </label>
             <button className={styles.button} type="submit">
               Log in
@@ -36,16 +37,16 @@ export default function App() {
         )}
         <ul className={styles.list}>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Free</strong>. Start with 3 campaigns, tracking links, QR
+            codes and core order attribution.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Basic</strong>. Analyze up to 20 campaigns with ROI, ROAS,
+            time ranges, rankings and CSV export.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Pro</strong>. Unlock unlimited campaigns, Add-to-Cart
+            tracking and the full conversion funnel.
           </li>
         </ul>
       </div>

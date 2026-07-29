@@ -10,6 +10,11 @@ datasource db {
 enum CampaignSourceType {
   qr
   link
+  meta
+  instagram
+  tiktok
+  google
+  email
   packaging
   flyer
   influencer
@@ -30,72 +35,288 @@ enum EventType {
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 
+  @@index([shop])
+  @@index([expires])
+  @@index([shop, isOnline])
+  @@index([shop, expires])
   @@map("Session")
 }
 
-model Campaign {
-  id              String             @id @default(cuid())
-  shop            String
-  publicToken     String             @unique @default(cuid())
-  name            String
-  sourceType      CampaignSourceType @default(qr)
-  targetUrl       String?
-  costCents       Int                @default(0)
-  clicksCount     Int                @default(0)
-  addToCartCount  Int                @default(0)
-  revenueCents    Int                @default(0)
-  ordersCount     Int                @default(0)
-  notes           String?
-  status          CampaignStatus     @default(active)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  events          Event[]
+model ShopPlanState {
+  shop                  String   @id
+  plan                  String   @default("free")
+  checkedAt             DateTime @default(now())
+  lastSuccessfulCheckAt DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([checkedAt])
+  @@map("ShopPlanState")
+}
+
+model ExpertSnapshot {
+  id               String   @id @default(cuid())
+  shop             String
+  snapshotDate     DateTime @db.Date
+  currency         String
+  inputFingerprint String
+  status           String   @default("ready")
+  analysis         Json
+  aiStatus         String   @default("rules_only")
+  aiModel          String?
+  dataThrough      DateTime
+  generatedAt      DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([shop, snapshotDate])
+  @@index([shop, generatedAt])
+  @@map("ExpertSnapshot")
+}
+
+model ExpertGoal {
+  id                   String    @id @default(cuid())
+  shop                 String    @unique
+  primaryGoal          String    @default("profitable_sales")
+  monthlyAdBudgetCents Int       @default(0)
+  targetRevenueCents   Int?
+  targetRoas           Float?
+  countryCode          String    @default("DE")
+  language             String    @default("de")
+  audience             String?
+  brandVoice           String?
+  differentiators      String?
+  offerNotes           String?
+  preferredChannels    String[]  @default([])
+  excludedChannels     String[]  @default([])
+  catalogSyncedAt      DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@map("ExpertGoal")
+}
+
+model ExpertConversation {
+  id        String                @id @default(cuid())
+  shop      String
+  title     String                @default("WhatSells Expert")
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  messages  ExpertMessage[]
+  drafts    ExpertCampaignDraft[]
+
+  @@index([shop, updatedAt])
+  @@map("ExpertConversation")
+}
+
+model ExpertMessage {
+  id             String             @id @default(cuid())
+  conversationId String
+  conversation   ExpertConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  shop           String
+  role           String
+  kind           String             @default("chat")
+  content        String
+  structured     Json?
+  citations      Json?
+  model          String?
+  createdAt      DateTime           @default(now())
 
   @@index([shop, createdAt])
-  @@index([shop, status])
+  @@index([conversationId, createdAt])
+  @@map("ExpertMessage")
+}
+
+model ExpertCampaignDraft {
+  id             String                 @id @default(cuid())
+  shop           String
+  conversationId String?
+  conversation   ExpertConversation?    @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  productId      String?
+  product        TrackedProduct?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId     String?                @unique
+  campaign       Campaign?              @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  status         String                 @default("draft")
+  channel        String
+  package        Json
+  model          String
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  assets         ExpertGeneratedAsset[]
+  decisions      ExpertDecision[]
+
+  @@index([shop, createdAt])
+  @@index([shop, status, updatedAt])
+  @@map("ExpertCampaignDraft")
+}
+
+model ExpertGeneratedAsset {
+  id                String               @id @default(cuid())
+  shop              String
+  draftId           String?
+  draft             ExpertCampaignDraft? @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  type              String
+  status            String               @default("generating")
+  fileName          String
+  mimeType          String
+  storagePath       String?
+  sourceStoragePath String?
+  prompt            String?
+  model             String?
+  width             Int?
+  height            Int?
+  expiresAt         DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([shop, createdAt])
+  @@index([expiresAt])
+  @@map("ExpertGeneratedAsset")
+}
+
+model ExpertUsage {
+  id                  String   @id @default(cuid())
+  requestId           String   @unique
+  shop                String
+  category            String
+  model               String
+  status              String   @default("reserved")
+  inputTokens         Int      @default(0)
+  cachedInputTokens   Int      @default(0)
+  outputTokens        Int      @default(0)
+  webSearchCalls      Int      @default(0)
+  imageCount          Int      @default(0)
+  estimatedCostMicros Int      @default(0)
+  reservedCostMicros  Int      @default(0)
+  providerResponseId  String?
+  failureCode         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([shop, createdAt])
+  @@index([shop, category, createdAt])
+  @@map("ExpertUsage")
+}
+
+model ExpertDecision {
+  id        String               @id @default(cuid())
+  shop      String
+  draftId   String?
+  draft     ExpertCampaignDraft? @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  decision  String
+  note      String?
+  createdAt DateTime             @default(now())
+
+  @@index([shop, createdAt])
+  @@map("ExpertDecision")
+}
+
+model TrackedProduct {
+  id               String                @id @default(cuid())
+  shop             String
+  shopifyProductId String
+  title            String
+  handle           String
+  status           String?
+  onlineStoreUrl   String
+  imageUrl         String?
+  imageAlt         String?
+  description      String?
+  vendor           String?
+  productType      String?
+  tags             String[]              @default([])
+  minPriceCents    Int?
+  maxPriceCents    Int?
+  currency         String?
+  totalInventory   Int?
+  shopifyCreatedAt DateTime?
+  shopifyUpdatedAt DateTime?
+  catalogSyncedAt  DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  campaigns        Campaign[]
+  expertDrafts     ExpertCampaignDraft[]
+
+  @@unique([shop, shopifyProductId])
+  @@index([shop, title])
+  @@map("TrackedProduct")
+}
+
+model Campaign {
+  id                   String               @id @default(cuid())
+  shop                 String
+  publicToken          String               @unique @default(cuid())
+  name                 String
+  sourceType           CampaignSourceType   @default(qr)
+  targetUrl            String?
+  costCents            Int                  @default(0)
+  clicksCount          Int                  @default(0)
+  addToCartCount       Int                  @default(0)
+  revenueCents         Int                  @default(0)
+  refundedCents        Int                  @default(0)
+  ordersCount          Int                  @default(0)
+  cancelledOrdersCount Int                  @default(0)
+  notes                String?
+  status               CampaignStatus       @default(active)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  productId            String?
+  product              TrackedProduct?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  events               Event[]
+  expertDraft          ExpertCampaignDraft?
+
   @@unique([shop, name])
+  @@index([shop, createdAt])
+  @@index([shop, status])
+  @@index([shop, productId])
 }
 
 model Event {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  campaignId  String
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  type        EventType
+  type EventType
 
   // analytics
-  userAgent   String?
-  referer     String?
-  ipHash      String?
-  lang        String?
+  userAgent String?
+  referer   String?
+  ipHash    String?
+  lang      String?
 
   // purchase attribution
-  orderId     String?
-  valueCents  Int?
-  currency    String?
+  orderId            String?
+  originalValueCents Int?
+  valueCents         Int?
+  refundedCents      Int       @default(0)
+  currency           String?
+  isCancelled        Boolean   @default(false)
+  reconciledAt       DateTime?
+  processedRefundIds String[]  @default([])
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([campaignId, createdAt])
   @@index([type, createdAt])
   @@index([campaignId, type, createdAt])
+  @@index([campaignId, isCancelled, createdAt])
+  @@index([orderId])
 }

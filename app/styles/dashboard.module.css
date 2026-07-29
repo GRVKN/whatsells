@@ -1,0 +1,157 @@
+/* Responsive dashboard layout */
+.metricGrid,
+.highlightGrid,
+.workflowGrid,
+.formGrid,
+.filterGrid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.metricGrid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.75rem), 1fr));
+}
+
+.highlightGrid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+.workflowGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workflowStep {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #e1e3e5;
+  border-radius: 0.75rem;
+  background: #f7f7f8;
+}
+
+.stepNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-bottom: 0.65rem;
+  border-radius: 999px;
+  background: #202223;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.formGrid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+}
+
+.nameField {
+  grid-column: span 4;
+}
+
+.typeField {
+  grid-column: span 3;
+}
+
+.productField {
+  grid-column: span 5;
+}
+
+.costField {
+  grid-column: span 3;
+}
+
+.notesField {
+  grid-column: span 7;
+}
+
+.createAction {
+  grid-column: span 2;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.filterGrid {
+  grid-template-columns: minmax(14rem, 2fr) minmax(10rem, 1fr) minmax(
+      10rem,
+      1fr
+    );
+  align-items: end;
+}
+
+.searchField,
+.filterField {
+  min-width: 0;
+}
+
+.metricCell,
+.highlightCell,
+.fieldCell {
+  min-width: 0;
+}
+
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.emptyState {
+  padding: 2rem 1rem;
+  border: 1px dashed #c9cccf;
+  border-radius: 0.75rem;
+  background: #fafbfb;
+  text-align: center;
+}
+
+.anchorSection {
+  scroll-margin-top: 1rem;
+}
+
+@media (max-width: 64rem) {
+  .nameField,
+  .productField,
+  .notesField {
+    grid-column: span 8;
+  }
+
+  .typeField,
+  .costField {
+    grid-column: span 4;
+  }
+
+  .createAction {
+    grid-column: span 4;
+  }
+}
+
+@media (max-width: 48rem) {
+  .workflowGrid,
+  .formGrid,
+  .filterGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nameField,
+  .typeField,
+  .productField,
+  .costField,
+  .notesField,
+  .createAction {
+    grid-column: 1;
+  }
+
+  .createAction {
+    justify-content: stretch;
+  }
+
+  .createAction > * {
+    width: 100%;
+  }
+
+  .emptyState {
+    padding: 1.5rem 0.75rem;
+  }
+}

@@ -1,7 +1,40 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useLocation, Link } from "react-router";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router";
 
+import CampaignDemoModal from "../components/CampaignDemoModal.jsx";
 import CampaignQr from "../components/CampaignQr.jsx";
+import DashboardSkeleton from "../components/DashboardSkeleton.jsx";
+import GettingStartedCard from "../components/GettingStartedCard.jsx";
+import InfoLabel from "../components/InfoLabel.jsx";
+import OnboardingModal from "../components/OnboardingModal.jsx";
+import PlanComparison from "../components/PlanComparison.jsx";
+import ProductCampaignGroups from "../components/ProductCampaignGroups.jsx";
+import ProductPickerField from "../components/ProductPickerField.jsx";
+import {
+  hasCampaignDraftErrors,
+  validateCampaignDraft,
+} from "../campaign-form";
+import { CAMPAIGN_SOURCE_OPTIONS } from "../campaign-sources";
+import {
+  buildSetupChecklist,
+  calculateSetupProgress,
+  ONBOARDING_STORAGE_KEY,
+  PREPARED_ASSET_STORAGE_KEY,
+} from "../getting-started";
+import { DEFAULT_CURRENCY, formatMoneyFromCents } from "../money";
+import { buildProductGroups } from "../product-groups";
+import {
+  BASIC_CAMPAIGN_LIMIT,
+  FREE_CAMPAIGN_LIMIT,
+  getCampaignLimit as getCentralCampaignLimit,
+  getPlanCapabilities as buildPlanCapabilities,
+  getPlanLabel as getCentralPlanLabel,
+  isBasicPlan as isCentralBasicPlan,
+  isExpertPlan as isCentralExpertPlan,
+  isFreePlan as isCentralFreePlan,
+  isProPlan as isCentralProPlan,
+} from "../plans";
+import styles from "../styles/dashboard.module.css";
 import {
   Page,
   Card,
@@ -10,44 +43,22 @@ import {
   TextField,
   Button,
   Select,
-  DataTable,
   Banner,
   InlineStack,
   BlockStack,
   Toast,
-  Frame,
   Badge,
 } from "@shopify/polaris";
 
 // ----------------------
-// Plan constants
-// ----------------------
-const FREE_CAMPAIGN_LIMIT = 3;
-const BASIC_CAMPAIGN_LIMIT = 20;
-
-// ----------------------
 // Helpers
 // ----------------------
-function formatMoneyFromCents(cents) {
-  const value = Number(cents || 0) / 100;
-
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
-  }).format(value);
-}
-
 function formatPercent(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return "—";
   }
 
   return `${(Number(value) * 100).toFixed(1)}%`;
-}
-
-function shorten(text, max = 45) {
-  if (!text) return "";
-  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
 }
 
 async function safeCopy(text) {
@@ -98,7 +109,9 @@ function getProfitCents(campaign) {
     return numberOrZero(campaign.profitCents);
   }
 
-  return numberOrZero(campaign?.revenueCents) - numberOrZero(campaign?.costCents);
+  return (
+    numberOrZero(campaign?.revenueCents) - numberOrZero(campaign?.costCents)
+  );
 }
 
 function getCampaignPerformance(campaign) {
@@ -185,52 +198,32 @@ function compareCampaignsNeedingAttention(a, b) {
   return checks.find((value) => value !== 0) || 0;
 }
 
-function normalizePlanName(value) {
-  return String(value || "free").trim().toLowerCase();
-}
-
 function getDefaultCapabilities() {
-  return {
-    plan: "Free",
-    campaignLimit: FREE_CAMPAIGN_LIMIT,
-    campaignCount: 0,
-    remainingCampaigns: FREE_CAMPAIGN_LIMIT,
-    canCreateCampaign: true,
-    hasUnlimitedCampaigns: false,
-    canUseAddToCartTracking: false,
-  };
+  return buildPlanCapabilities("free", 0);
 }
 
 function getPlanName(capabilities) {
-  const rawPlan = normalizePlanName(capabilities?.plan);
-
-  if (rawPlan === "pro") return "Pro";
-  if (rawPlan === "basic") return "Basic";
-
-  return "Free";
+  return getCentralPlanLabel(capabilities);
 }
 
 function isProPlan(capabilities) {
-  return getPlanName(capabilities) === "Pro";
+  return isCentralProPlan(capabilities);
 }
 
 function isBasicPlan(capabilities) {
-  return getPlanName(capabilities) === "Basic";
+  return isCentralBasicPlan(capabilities);
+}
+
+function isExpertPlan(capabilities) {
+  return isCentralExpertPlan(capabilities);
 }
 
 function isFreePlan(capabilities) {
-  return getPlanName(capabilities) === "Free";
+  return isCentralFreePlan(capabilities);
 }
 
 function getCampaignLimit(capabilities) {
-  if (capabilities?.campaignLimit === null) return null;
-
-  const planName = getPlanName(capabilities);
-
-  if (planName === "Pro") return null;
-  if (planName === "Basic") return BASIC_CAMPAIGN_LIMIT;
-
-  return FREE_CAMPAIGN_LIMIT;
+  return getCentralCampaignLimit(capabilities);
 }
 
 function getRemainingCampaigns(capabilities, campaignCount) {
@@ -261,7 +254,9 @@ function getPlanHeadline(capabilities, campaignCount) {
   const limit = getCampaignLimit(capabilities);
 
   if (limit === null) {
-    return "Pro Analytics active · Unlimited campaigns";
+    return isExpertPlan(capabilities)
+      ? "Expert Operator active · Unlimited campaigns"
+      : "Pro Analytics active · Unlimited campaigns";
   }
 
   return `${planName} plan · ${campaignCount} of ${limit} campaigns used`;
@@ -273,7 +268,9 @@ function getPlanHelpText(capabilities, campaignCount) {
   const remaining = getRemainingCampaigns(capabilities, campaignCount);
 
   if (limit === null) {
-    return "You can create unlimited campaigns. Add-to-Cart tracking is reserved for Pro Analytics.";
+    return isExpertPlan(capabilities)
+      ? "You can use the complete funnel plus daily Opportunity Scores, warnings and next-action recommendations."
+      : "You can create unlimited campaigns and use the complete click → add-to-cart → order funnel. Expert adds daily decisions and Opportunity Scores.";
   }
 
   if (remaining <= 0 && planName === "Free") {
@@ -285,10 +282,10 @@ function getPlanHelpText(capabilities, campaignCount) {
   }
 
   if (planName === "Free") {
-    return `${remaining} free campaign${remaining === 1 ? "" : "s"} remaining. Upgrade when you need more.`;
+    return `${remaining} free campaign${remaining === 1 ? "" : "s"} remaining. Basic adds profitability analytics, time ranges and CSV export.`;
   }
 
-  return `${remaining} Basic campaign${remaining === 1 ? "" : "s"} remaining. Upgrade to Pro when you need unlimited campaigns.`;
+  return `${remaining} Basic campaign${remaining === 1 ? "" : "s"} remaining. Your profitability analytics and CSV export are active.`;
 }
 
 function getCreateButtonLabel(capabilities, campaignCount) {
@@ -312,20 +309,43 @@ function getUpgradeButtonLabel(capabilities) {
     return "Upgrade to Pro Analytics";
   }
 
-  return "View plans";
+  if (isProPlan(capabilities) && !isExpertPlan(capabilities)) {
+    return "Upgrade to Expert";
+  }
+
+  return "Upgrade to Basic";
+}
+
+function getNextPlanUrl(
+  capabilities,
+  { upgradeUrl, basicUrl, proUrl, expertUrl },
+) {
+  if (isExpertPlan(capabilities)) {
+    return upgradeUrl;
+  }
+
+  if (isProPlan(capabilities)) {
+    return expertUrl || upgradeUrl;
+  }
+
+  if (isBasicPlan(capabilities)) {
+    return proUrl || upgradeUrl;
+  }
+
+  return basicUrl || upgradeUrl || proUrl || expertUrl;
 }
 
 // ----------------------
 // Small UI blocks
 // ----------------------
-function MetricCard({ label, value, helpText }) {
+function MetricCard({ label, value, helpText, infoKey }) {
   return (
-    <div style={{ minWidth: 170, flex: 1 }}>
+    <div className={styles.metricCell}>
       <Card>
         <BlockStack gap="100">
-          <Text as="p" tone="subdued">
-            {label}
-          </Text>
+          <div style={{ color: "#616161", fontSize: 13 }}>
+            <InfoLabel label={label} infoKey={infoKey} />
+          </div>
 
           <Text variant="headingLg" as="p">
             {value}
@@ -342,10 +362,10 @@ function MetricCard({ label, value, helpText }) {
   );
 }
 
-function CampaignHighlightCard({ title, campaign, emptyText }) {
+function CampaignHighlightCard({ title, campaign, emptyText, currency }) {
   if (!campaign) {
     return (
-      <div style={{ minWidth: 260, flex: 1 }}>
+      <div className={styles.highlightCell}>
         <Card>
           <BlockStack gap="150">
             <Text variant="headingSm" as="h3">
@@ -364,7 +384,7 @@ function CampaignHighlightCard({ title, campaign, emptyText }) {
   const profitCents = getProfitCents(campaign);
 
   return (
-    <div style={{ minWidth: 260, flex: 1 }}>
+    <div className={styles.highlightCell}>
       <Card>
         <BlockStack gap="150">
           <Text variant="headingSm" as="h3">
@@ -376,12 +396,13 @@ function CampaignHighlightCard({ title, campaign, emptyText }) {
           </Text>
 
           <Text as="p" tone="subdued">
-            Profit: {formatMoneyFromCents(profitCents)} · ROI:{" "}
-            {formatPercent(campaign.roi)}
+            Campaign result: {formatMoneyFromCents(profitCents, currency)} ·
+            ROI: {formatPercent(campaign.roi)}
           </Text>
 
           <Text as="p" tone="subdued">
-            Revenue: {formatMoneyFromCents(campaign.revenueCents || 0)} ·
+            Net revenue:{" "}
+            {formatMoneyFromCents(campaign.revenueCents || 0, currency)} ·
             Orders: {campaign.ordersCount ?? 0} · Clicks:{" "}
             {campaign.clicksCount ?? 0}
           </Text>
@@ -391,17 +412,96 @@ function CampaignHighlightCard({ title, campaign, emptyText }) {
   );
 }
 
+function WorkflowOverview() {
+  return (
+    <div className={styles.workflowGrid}>
+      <div className={styles.workflowStep}>
+        <span className={styles.stepNumber}>1</span>
+        <BlockStack gap="100">
+          <Text variant="headingSm" as="h3">
+            Choose the product
+          </Text>
+          <Text as="p" tone="subdued">
+            Select the exact product directly from your Shopify catalog.
+          </Text>
+        </BlockStack>
+      </div>
+
+      <div className={styles.workflowStep}>
+        <span className={styles.stepNumber}>2</span>
+        <BlockStack gap="100">
+          <Text variant="headingSm" as="h3">
+            Create the campaign
+          </Text>
+          <Text as="p" tone="subdued">
+            WhatSells generates a unique tracking link and QR code.
+          </Text>
+        </BlockStack>
+      </div>
+
+      <div className={styles.workflowStep}>
+        <span className={styles.stepNumber}>3</span>
+        <BlockStack gap="100">
+          <Text variant="headingSm" as="h3">
+            Share and measure
+          </Text>
+          <Text as="p" tone="subdued">
+            Use the generated asset and watch clicks, orders and net revenue.
+          </Text>
+        </BlockStack>
+      </div>
+    </div>
+  );
+}
+
+function EmptyCampaignState({ onCreate, onViewDemo }) {
+  return (
+    <div className={styles.emptyState}>
+      <BlockStack gap="300" inlineAlign="center">
+        <BlockStack gap="100" inlineAlign="center">
+          <Text variant="headingMd" as="h3">
+            Create your first measurable campaign
+          </Text>
+
+          <Text as="p" tone="subdued">
+            You will immediately receive a unique tracking link and QR code.
+            Demo data is available if you want to see the result first.
+          </Text>
+        </BlockStack>
+
+        <InlineStack gap="200" align="center" wrap>
+          <Button variant="primary" onClick={onCreate}>
+            Create first campaign
+          </Button>
+
+          <Button onClick={onViewDemo}>View example</Button>
+        </InlineStack>
+      </BlockStack>
+    </div>
+  );
+}
+
 function PlanStatusCard({
   capabilities,
   campaignCount,
   upgradeUrl,
+  basicUrl,
   proUrl,
+  expertUrl,
 }) {
   const planName = getPlanName(capabilities);
   const limit = getCampaignLimit(capabilities);
   const remaining = getRemainingCampaigns(capabilities, campaignCount);
   const createAllowed = canCreateCampaign(capabilities, campaignCount);
-  const showUpgradeButton = !isProPlan(capabilities) && (upgradeUrl || proUrl);
+  const showUpgradeButton =
+    !isExpertPlan(capabilities) &&
+    (upgradeUrl || basicUrl || proUrl || expertUrl);
+  const nextPlanUrl = getNextPlanUrl(capabilities, {
+    upgradeUrl,
+    basicUrl,
+    proUrl,
+    expertUrl,
+  });
 
   let bannerTone = "info";
 
@@ -423,11 +523,13 @@ function PlanStatusCard({
             </Text>
           </InlineStack>
 
-          {showUpgradeButton ? (
+          {isExpertPlan(capabilities) ? (
+            <Button url="/app/expert">Open daily operator</Button>
+          ) : showUpgradeButton ? (
             <Button
               variant="primary"
               onClick={() => {
-                window.open(proUrl || upgradeUrl, "_top");
+                window.open(nextPlanUrl, "_top");
               }}
             >
               {getUpgradeButtonLabel(capabilities)}
@@ -439,15 +541,19 @@ function PlanStatusCard({
 
         <InlineStack gap="200" wrap>
           <Text as="p" tone="subdued">
-            Free: {FREE_CAMPAIGN_LIMIT} campaigns
+            Free: {FREE_CAMPAIGN_LIMIT} campaigns + core tracking
           </Text>
 
           <Text as="p" tone="subdued">
-            Basic: {BASIC_CAMPAIGN_LIMIT} campaigns
+            Basic: {BASIC_CAMPAIGN_LIMIT} campaigns + profitability
           </Text>
 
           <Text as="p" tone="subdued">
-            Pro: unlimited
+            Pro: unlimited + full funnel
+          </Text>
+
+          <Text as="p" tone="subdued">
+            Expert: daily actions + Opportunity Scores
           </Text>
 
           {isProPlan(capabilities) ? (
@@ -471,27 +577,68 @@ function PlanStatusCard({
   );
 }
 
+function LockedBasicAnalytics({ basicUrl, upgradeUrl }) {
+  return (
+    <Banner tone="info">
+      <BlockStack gap="200">
+        <InlineStack gap="200" wrap>
+          <Badge tone="attention">Basic analytics locked</Badge>
+
+          <Text as="p" fontWeight="semibold">
+            See whether a campaign actually earns more than it costs.
+          </Text>
+        </InlineStack>
+
+        <Text as="p">
+          Basic adds campaign cost, campaign result, ROI, ROAS, time-range
+          charts, rankings, order details and CSV export for up to{" "}
+          {BASIC_CAMPAIGN_LIMIT} campaigns.
+        </Text>
+
+        {basicUrl || upgradeUrl ? (
+          <Button
+            variant="primary"
+            onClick={() => window.open(basicUrl || upgradeUrl, "_top")}
+          >
+            Upgrade to Basic
+          </Button>
+        ) : null}
+      </BlockStack>
+    </Banner>
+  );
+}
+
 // ----------------------
 // Component
 // ----------------------
 export default function AppIndex() {
   const location = useLocation();
+  const navigate = useNavigate();
   const embeddedQuery = location.search || "";
+  const createSectionRef = useRef(null);
+  const campaignsSectionRef = useRef(null);
 
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [err, setErr] = useState("");
   const [campaigns, setCampaigns] = useState([]);
   const [capabilities, setCapabilities] = useState(getDefaultCapabilities());
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+  const [formErrors, setFormErrors] = useState({});
 
   const [upgradeUrl, setUpgradeUrl] = useState("");
   const [basicUrl, setBasicUrl] = useState("");
   const [proUrl, setProUrl] = useState("");
+  const [expertUrl, setExpertUrl] = useState("");
 
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState("qr");
-  const [targetUrl, setTargetUrl] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [cost, setCost] = useState("");
   const [notes, setNotes] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const [toast, setToast] = useState({
     active: false,
@@ -501,9 +648,22 @@ export default function AppIndex() {
   const [qrOpen, setQrOpen] = useState(false);
   const [qrValue, setQrValue] = useState("");
   const [qrTitle, setQrTitle] = useState("");
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [hasPreparedAsset, setHasPreparedAsset] = useState(false);
 
   const campaignCount = campaigns.length;
+  const productCount = useMemo(
+    () =>
+      new Set(
+        campaigns.map((campaign) => campaign?.product?.id).filter(Boolean),
+      ).size,
+    [campaigns],
+  );
   const createAllowed = canCreateCampaign(capabilities, campaignCount);
+  const hasBasicAnalytics = Boolean(capabilities.canUseCostAnalytics);
+  const canExportCampaigns = Boolean(capabilities.canExportCampaigns);
 
   const showToast = useCallback((content) => {
     setToast({ active: true, content });
@@ -513,17 +673,7 @@ export default function AppIndex() {
     setToast((prev) => ({ ...prev, active: false }));
   }, []);
 
-  const sourceOptions = useMemo(
-    () => [
-      { label: "QR code", value: "qr" },
-      { label: "Tracking link", value: "link" },
-      { label: "Packaging", value: "packaging" },
-      { label: "Flyer", value: "flyer" },
-      { label: "Influencer", value: "influencer" },
-      { label: "Event", value: "event" },
-    ],
-    [],
-  );
+  const sourceOptions = useMemo(() => [...CAMPAIGN_SOURCE_OPTIONS], []);
 
   const sourceLabelByValue = useMemo(() => {
     const map = {};
@@ -535,11 +685,28 @@ export default function AppIndex() {
     return map;
   }, [sourceOptions]);
 
+  const sourceFilterOptions = useMemo(
+    () => [{ label: "All channels", value: "all" }, ...sourceOptions],
+    [sourceOptions],
+  );
+
+  const statusFilterOptions = useMemo(
+    () => [
+      { label: "All statuses", value: "all" },
+      { label: "Active", value: "active" },
+      { label: "Paused", value: "paused" },
+      { label: "Archived", value: "archived" },
+    ],
+    [],
+  );
+
   const rankedCampaigns = useMemo(() => {
+    if (!capabilities.canUseCampaignComparison) return [];
+
     return campaigns.filter((campaign) => {
       return campaign?.id && hasCampaignSignal(campaign);
     });
-  }, [campaigns]);
+  }, [campaigns, capabilities.canUseCampaignComparison]);
 
   const topCampaign = useMemo(() => {
     if (!rankedCampaigns.length) return null;
@@ -560,6 +727,8 @@ export default function AppIndex() {
         const costCents = numberOrZero(campaign?.costCents);
         const profitCents = getProfitCents(campaign);
         const orders = numberOrZero(campaign?.ordersCount);
+        const cancelledOrders = numberOrZero(campaign?.cancelledOrdersCount);
+        const refundedCents = numberOrZero(campaign?.refundedCents);
         const clicks = numberOrZero(campaign?.clicksCount);
 
         return {
@@ -567,6 +736,8 @@ export default function AppIndex() {
           costCents: sum.costCents + costCents,
           profitCents: sum.profitCents + profitCents,
           orders: sum.orders + orders,
+          cancelledOrders: sum.cancelledOrders + cancelledOrders,
+          refundedCents: sum.refundedCents + refundedCents,
           clicks: sum.clicks + clicks,
         };
       },
@@ -575,25 +746,83 @@ export default function AppIndex() {
         costCents: 0,
         profitCents: 0,
         orders: 0,
+        cancelledOrders: 0,
+        refundedCents: 0,
         clicks: 0,
       },
     );
 
     return {
       ...totals,
-      roi:
-        totals.costCents > 0 ? totals.profitCents / totals.costCents : null,
-      conversionRate:
-        totals.clicks > 0 ? totals.orders / totals.clicks : null,
+      roi: totals.costCents > 0 ? totals.profitCents / totals.costCents : null,
+      conversionRate: totals.clicks > 0 ? totals.orders / totals.clicks : null,
     };
   }, [campaigns]);
+
+  const setupChecklist = useMemo(
+    () =>
+      buildSetupChecklist({
+        campaignCount,
+        hasPreparedAsset,
+        clicks: overview.clicks,
+        orders: overview.orders,
+      }),
+    [campaignCount, hasPreparedAsset, overview.clicks, overview.orders],
+  );
+
+  const setupProgress = useMemo(
+    () => calculateSetupProgress(setupChecklist),
+    [setupChecklist],
+  );
 
   const resetForm = useCallback(() => {
     setName("");
     setSourceType("qr");
-    setTargetUrl("");
+    setSelectedProduct(null);
     setCost("");
     setNotes("");
+    setFormErrors({});
+  }, []);
+
+  const markOnboardingSeen = useCallback(() => {
+    try {
+      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "seen");
+    } catch {
+      // The guide can still be used when browser storage is unavailable.
+    }
+  }, []);
+
+  const closeOnboarding = useCallback(() => {
+    markOnboardingSeen();
+    setOnboardingOpen(false);
+  }, [markOnboardingSeen]);
+
+  const markAssetPrepared = useCallback(() => {
+    setHasPreparedAsset(true);
+
+    try {
+      window.localStorage.setItem(PREPARED_ASSET_STORAGE_KEY, "true");
+    } catch {
+      // This milestone is only a UI convenience; tracking remains unaffected.
+    }
+  }, []);
+
+  const scrollToCreate = useCallback(() => {
+    createSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+
+    window.setTimeout(() => {
+      createSectionRef.current?.querySelector("input")?.focus();
+    }, 350);
+  }, []);
+
+  const scrollToCampaigns = useCallback(() => {
+    campaignsSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }, []);
 
   const loadCampaigns = useCallback(async () => {
@@ -613,28 +842,26 @@ export default function AppIndex() {
         : [];
 
       setCampaigns(nextCampaigns);
+      setCurrency(data?.currency || DEFAULT_CURRENCY);
 
       const nextCapabilities = data?.capabilities
         ? data.capabilities
-        : {
-            ...getDefaultCapabilities(),
-            campaignCount: nextCampaigns.length,
-            remainingCampaigns: Math.max(
-              FREE_CAMPAIGN_LIMIT - nextCampaigns.length,
-              0,
-            ),
-            canCreateCampaign: nextCampaigns.length < FREE_CAMPAIGN_LIMIT,
-          };
+        : buildPlanCapabilities("free", nextCampaigns.length);
 
       setCapabilities(nextCapabilities);
 
       if (data?.upgradeUrl) setUpgradeUrl(data.upgradeUrl);
       if (data?.basicUrl) setBasicUrl(data.basicUrl);
       if (data?.proUrl) setProUrl(data.proUrl);
+      if (data?.expertUrl) setExpertUrl(data.expertUrl);
     } catch (e) {
-      setErr(e?.message || "Could not load campaigns.");
+      setErr(
+        e?.message ||
+          "Could not load campaigns. Check your connection and try again.",
+      );
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
   }, []);
 
@@ -643,10 +870,16 @@ export default function AppIndex() {
     setUpgradeUrl("");
 
     const trimmedName = name.trim();
-    const trimmedTargetUrl = targetUrl.trim();
+    const nextFormErrors = validateCampaignDraft({
+      name,
+      shopifyProductId: selectedProduct?.id,
+      cost,
+    });
 
-    if (!trimmedName) {
-      setErr("Please enter a campaign name.");
+    setFormErrors(nextFormErrors);
+
+    if (hasCampaignDraftErrors(nextFormErrors)) {
+      setErr("Check the highlighted campaign fields and try again.");
       return;
     }
 
@@ -658,9 +891,9 @@ export default function AppIndex() {
     const payload = {
       name: trimmedName,
       sourceType,
-      cost,
       notes,
-      ...(trimmedTargetUrl ? { targetUrl: trimmedTargetUrl } : {}),
+      shopifyProductId: selectedProduct.id,
+      ...(capabilities.canUseCostAnalytics ? { cost } : {}),
     };
 
     setLoading(true);
@@ -679,6 +912,7 @@ export default function AppIndex() {
           if (data?.upgradeUrl) setUpgradeUrl(data.upgradeUrl);
           if (data?.basicUrl) setBasicUrl(data.basicUrl);
           if (data?.proUrl) setProUrl(data.proUrl);
+          if (data?.expertUrl) setExpertUrl(data.expertUrl);
 
           setErr(
             data.error ||
@@ -703,8 +937,7 @@ export default function AppIndex() {
                   : 0,
               canCreateCampaign: false,
               canUseAddToCartTracking:
-                data?.canUseAddToCartTracking ??
-                prev.canUseAddToCartTracking,
+                data?.canUseAddToCartTracking ?? prev.canUseAddToCartTracking,
             }));
           }
 
@@ -719,8 +952,12 @@ export default function AppIndex() {
       }
 
       resetForm();
-      showToast("Campaign created");
+      markOnboardingSeen();
+      showToast(
+        "Campaign created. Copy its tracking link or open the QR code to start collecting data.",
+      );
       await loadCampaigns();
+      window.setTimeout(scrollToCampaigns, 150);
     } catch (e) {
       setErr(e?.message || "Could not create campaign.");
     } finally {
@@ -729,7 +966,7 @@ export default function AppIndex() {
   }, [
     name,
     sourceType,
-    targetUrl,
+    selectedProduct,
     cost,
     notes,
     capabilities,
@@ -737,6 +974,8 @@ export default function AppIndex() {
     resetForm,
     loadCampaigns,
     showToast,
+    markOnboardingSeen,
+    scrollToCampaigns,
   ]);
 
   const deleteCampaign = useCallback(
@@ -778,100 +1017,217 @@ export default function AppIndex() {
     loadCampaigns();
   }, [loadCampaigns]);
 
-  const rows = useMemo(() => {
-    return campaigns.map((campaign) => {
-      const token = campaign?.publicToken || "";
-      const goUrl = token ? buildGoUrl(token) : "";
-      const profitCents = getProfitCents(campaign);
+  useEffect(() => {
+    if (!capabilities.canUseCostAnalytics && cost) {
+      setCost("");
+      setFormErrors((current) => ({
+        ...current,
+        cost: "",
+      }));
+    }
+  }, [capabilities.canUseCostAnalytics, cost]);
 
-      return [
-        <BlockStack gap="050" key={`${campaign.id}-campaign`}>
-          <Text as="span" fontWeight="semibold">
-            {campaign?.name || "Untitled campaign"}
-          </Text>
+  useEffect(() => {
+    try {
+      setHasPreparedAsset(
+        window.localStorage.getItem(PREPARED_ASSET_STORAGE_KEY) === "true",
+      );
+    } catch {
+      setHasPreparedAsset(false);
+    }
+  }, []);
 
-          {campaign?.targetUrl ? (
-            <Text as="span" tone="subdued">
-              {shorten(campaign.targetUrl, 52)}
-            </Text>
-          ) : (
-            <Text as="span" tone="subdued">
-              No destination URL yet
-            </Text>
-          )}
-        </BlockStack>,
+  useEffect(() => {
+    if (initialLoading || err || onboardingChecked) return;
 
-        sourceLabelByValue[campaign?.sourceType] || campaign?.sourceType || "—",
+    setOnboardingChecked(true);
 
-        campaign?.clicksCount ?? 0,
+    try {
+      const hasSeenOnboarding =
+        window.localStorage.getItem(ONBOARDING_STORAGE_KEY) === "seen";
 
-        campaign?.ordersCount ?? 0,
+      if (!hasSeenOnboarding) {
+        setOnboardingOpen(true);
+      }
+    } catch {
+      setOnboardingOpen(campaignCount === 0);
+    }
+  }, [campaignCount, err, initialLoading, onboardingChecked]);
 
-        formatMoneyFromCents(campaign?.revenueCents || 0),
+  const copyFirstTrackingLink = useCallback(async () => {
+    const firstCampaign = campaigns[0];
+    const goUrl = firstCampaign?.publicToken
+      ? buildGoUrl(firstCampaign.publicToken)
+      : "";
 
-        formatMoneyFromCents(profitCents),
+    if (!goUrl) {
+      setErr("The first campaign does not have a tracking link yet.");
+      return;
+    }
 
-        formatPercent(campaign?.roi),
+    const ok = await safeCopy(goUrl);
 
-        goUrl ? (
-          <InlineStack gap="200" wrap={false}>
-            <Button
-              size="slim"
-              onClick={async () => {
-                const ok = await safeCopy(goUrl);
-                showToast(ok ? "Tracking link copied" : "Copy failed");
-              }}
-            >
-              Copy link
-            </Button>
+    if (ok) {
+      markAssetPrepared();
+      showToast("Tracking link copied. Use this exact link in the campaign.");
+    } else {
+      setErr("The tracking link could not be copied. Open the campaign below.");
+      scrollToCampaigns();
+    }
+  }, [campaigns, markAssetPrepared, scrollToCampaigns, showToast]);
 
-            <Link
-              to={`/app/campaigns/${campaign.id}${embeddedQuery}`}
-              style={{ textDecoration: "none" }}
-            >
-              <Button size="slim" variant="secondary">
-                Details
-              </Button>
-            </Link>
+  const handleSetupAction = useCallback(
+    async (action) => {
+      if (action === "create") {
+        scrollToCreate();
+        return;
+      }
 
-            <Button
-              size="slim"
-              onClick={() => {
-                setQrValue(goUrl);
-                setQrTitle(campaign?.name || "Campaign");
-                setQrOpen(true);
-              }}
-            >
-              QR code
-            </Button>
+      if (action === "share") {
+        await copyFirstTrackingLink();
+        return;
+      }
 
-            <Button
-              size="slim"
-              tone="critical"
-              onClick={() => deleteCampaign(campaign.id, campaign.name)}
-            >
-              Delete
-            </Button>
-          </InlineStack>
-        ) : (
-          "—"
-        ),
-      ];
-    });
-  }, [
-    campaigns,
-    sourceLabelByValue,
-    showToast,
-    deleteCampaign,
-    embeddedQuery,
-  ]);
+      if (action === "click") {
+        await loadCampaigns();
+        showToast("Tracking data refreshed");
+        return;
+      }
+
+      if (action === "order" && campaigns[0]?.id) {
+        navigate(`/app/campaigns/${campaigns[0].id}${embeddedQuery}`);
+        return;
+      }
+
+      scrollToCampaigns();
+    },
+    [
+      campaigns,
+      copyFirstTrackingLink,
+      embeddedQuery,
+      loadCampaigns,
+      navigate,
+      scrollToCampaigns,
+      scrollToCreate,
+      showToast,
+    ],
+  );
+
+  const productGroups = useMemo(
+    () =>
+      buildProductGroups(campaigns, {
+        search: productSearch,
+        sourceType: sourceFilter,
+        status: statusFilter,
+      }),
+    [campaigns, productSearch, sourceFilter, statusFilter],
+  );
+
+  const copyCampaignTrackingLink = useCallback(
+    async (campaign) => {
+      const goUrl = campaign?.publicToken
+        ? buildGoUrl(campaign.publicToken)
+        : "";
+
+      if (!goUrl) {
+        setErr("This campaign does not have a tracking link.");
+        return;
+      }
+
+      const ok = await safeCopy(goUrl);
+
+      if (ok) markAssetPrepared();
+      showToast(ok ? "Tracking link copied" : "Copy failed");
+    },
+    [markAssetPrepared, showToast],
+  );
+
+  const openCampaignQr = useCallback(
+    (campaign) => {
+      const goUrl = campaign?.publicToken
+        ? buildGoUrl(campaign.publicToken)
+        : "";
+
+      if (!goUrl) {
+        setErr("This campaign does not have a tracking link.");
+        return;
+      }
+
+      markAssetPrepared();
+      setQrValue(goUrl);
+      setQrTitle(
+        campaign?.product?.title
+          ? `${campaign.product.title} · ${campaign.name}`
+          : campaign?.name || "Campaign",
+      );
+      setQrOpen(true);
+    },
+    [markAssetPrepared],
+  );
+
+  const assignCampaignProduct = useCallback(
+    async (campaign, product) => {
+      setErr("");
+      setLoading(true);
+
+      try {
+        const res = await fetch("/api/campaigns", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            operation: "assign_product",
+            id: campaign.id,
+            shopifyProductId: product.id,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(
+            data?.error || `Product assignment failed (${res.status})`,
+          );
+        }
+
+        showToast(data?.message || "Campaign assigned to Shopify product.");
+        await loadCampaigns();
+        return true;
+      } catch (error) {
+        setErr(
+          error?.message ||
+            "Could not assign this campaign to the selected product.",
+        );
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadCampaigns, showToast],
+  );
+
+  if (initialLoading) {
+    return (
+      <Page title="WhatSells" subtitle="Campaign tracking for Shopify">
+        <DashboardSkeleton />
+      </Page>
+    );
+  }
 
   return (
-    <Frame>
+    <>
       <Page title="WhatSells" subtitle="Campaign tracking for Shopify">
         <Layout>
           <Layout.Section>
             <BlockStack gap="400">
+              {setupProgress < 100 ? (
+                <GettingStartedCard
+                  checklist={setupChecklist}
+                  progress={setupProgress}
+                  onNextAction={handleSetupAction}
+                  onOpenGuide={() => setOnboardingOpen(true)}
+                  onViewDemo={() => setDemoOpen(true)}
+                />
+              ) : null}
+
               <Card>
                 <BlockStack gap="400">
                   <InlineStack gap="400" align="space-between" wrap>
@@ -886,21 +1242,33 @@ export default function AppIndex() {
                       </Text>
                     </BlockStack>
 
-                    <Button onClick={loadCampaigns} loading={loading}>
-                      Refresh data
-                    </Button>
+                    <InlineStack gap="200" wrap>
+                      <Button onClick={() => setOnboardingOpen(true)}>
+                        Setup guide
+                      </Button>
+
+                      <Button onClick={loadCampaigns} loading={loading}>
+                        Refresh data
+                      </Button>
+                    </InlineStack>
                   </InlineStack>
 
                   <PlanStatusCard
                     capabilities={capabilities}
                     campaignCount={campaignCount}
-                    upgradeUrl={upgradeUrl || basicUrl}
+                    upgradeUrl={upgradeUrl}
+                    basicUrl={basicUrl}
                     proUrl={proUrl}
+                    expertUrl={expertUrl}
                   />
 
                   {err ? (
                     <Banner
-                      tone={upgradeUrl || proUrl || basicUrl ? "warning" : "critical"}
+                      tone={
+                        upgradeUrl || proUrl || basicUrl || expertUrl
+                          ? "warning"
+                          : "critical"
+                      }
                       onDismiss={() => {
                         setErr("");
                         setUpgradeUrl("");
@@ -909,13 +1277,18 @@ export default function AppIndex() {
                       <BlockStack gap="200">
                         <Text as="p">{err}</Text>
 
-                        {upgradeUrl || proUrl || basicUrl ? (
+                        {upgradeUrl || proUrl || basicUrl || expertUrl ? (
                           <InlineStack gap="200">
                             <Button
                               variant="primary"
                               onClick={() => {
                                 window.open(
-                                  proUrl || upgradeUrl || basicUrl,
+                                  getNextPlanUrl(capabilities, {
+                                    upgradeUrl,
+                                    basicUrl,
+                                    proUrl,
+                                    expertUrl,
+                                  }),
                                   "_top",
                                 );
                               }}
@@ -923,212 +1296,389 @@ export default function AppIndex() {
                               {getUpgradeButtonLabel(capabilities)}
                             </Button>
                           </InlineStack>
-                        ) : null}
+                        ) : (
+                          <Button onClick={loadCampaigns} loading={loading}>
+                            Try again
+                          </Button>
+                        )}
                       </BlockStack>
                     </Banner>
                   ) : null}
 
-                  <InlineStack gap="300" wrap>
+                  <div className={styles.metricGrid}>
                     <MetricCard
-                      label="Revenue"
-                      value={formatMoneyFromCents(overview.revenueCents)}
-                      helpText="Tracked revenue"
+                      label="Products"
+                      value={String(productCount)}
+                      helpText="Shopify products with at least one campaign"
+                    />
+
+                    <MetricCard
+                      label="Clicks"
+                      value={String(overview.clicks)}
+                      helpText="Tracked visits through campaign links and QR codes"
                     />
 
                     <MetricCard
                       label="Orders"
+                      infoKey="orders"
                       value={String(overview.orders)}
-                      helpText="Attributed orders"
+                      helpText="Attributed active orders"
                     />
 
                     <MetricCard
-                      label="Profit"
-                      value={formatMoneyFromCents(overview.profitCents)}
-                      helpText="Revenue minus cost"
+                      label="Net revenue"
+                      infoKey="revenue"
+                      value={formatMoneyFromCents(
+                        overview.revenueCents,
+                        currency,
+                      )}
+                      helpText="Attributed revenue after refunds and cancellations"
                     />
 
                     <MetricCard
-                      label="ROI"
-                      value={formatPercent(overview.roi)}
-                      helpText="Profit divided by cost"
-                    />
-                  </InlineStack>
-
-                  <InlineStack gap="300" wrap>
-                    <CampaignHighlightCard
-                      title="Top campaign"
-                      campaign={topCampaign}
-                      emptyText="No campaign performance data yet."
+                      label="Conversion"
+                      infoKey="conversion"
+                      value={formatPercent(overview.conversionRate)}
+                      helpText="Orders divided by tracked clicks"
                     />
 
-                    <CampaignHighlightCard
-                      title="Needs attention"
-                      campaign={attentionCampaign}
-                      emptyText="No campaign needs attention yet."
+                    {hasBasicAnalytics ? (
+                      <>
+                        <MetricCard
+                          label="Campaign result"
+                          infoKey="campaignResult"
+                          value={formatMoneyFromCents(
+                            overview.profitCents,
+                            currency,
+                          )}
+                          helpText="Revenue minus campaign cost; product and operating costs are excluded"
+                        />
+
+                        <MetricCard
+                          label="ROI"
+                          infoKey="roi"
+                          value={formatPercent(overview.roi)}
+                          helpText="Campaign result divided by campaign cost"
+                        />
+
+                        <MetricCard
+                          label="Refunds"
+                          infoKey="refunds"
+                          value={formatMoneyFromCents(
+                            overview.refundedCents,
+                            currency,
+                          )}
+                          helpText="Refunded value from attributed orders"
+                        />
+
+                        <MetricCard
+                          label="Cancelled orders"
+                          infoKey="cancelledOrders"
+                          value={String(overview.cancelledOrders)}
+                          helpText="Removed from active order and conversion counts"
+                        />
+                      </>
+                    ) : null}
+                  </div>
+
+                  {hasBasicAnalytics ? (
+                    <div className={styles.highlightGrid}>
+                      <CampaignHighlightCard
+                        title="Top campaign"
+                        campaign={topCampaign}
+                        currency={currency}
+                        emptyText="No campaign performance data yet."
+                      />
+
+                      <CampaignHighlightCard
+                        title="Needs attention"
+                        campaign={attentionCampaign}
+                        currency={currency}
+                        emptyText="No campaign needs attention yet."
+                      />
+                    </div>
+                  ) : (
+                    <LockedBasicAnalytics
+                      basicUrl={basicUrl}
+                      upgradeUrl={upgradeUrl}
                     />
-                  </InlineStack>
+                  )}
                 </BlockStack>
               </Card>
 
-              <Card>
-                <BlockStack gap="400">
-                  <BlockStack gap="100">
-                    <Text variant="headingMd" as="h2">
-                      Create campaign
-                    </Text>
+              <PlanComparison
+                capabilities={capabilities}
+                upgradeUrl={upgradeUrl}
+                basicUrl={basicUrl}
+                proUrl={proUrl}
+                expertUrl={expertUrl}
+              />
 
-                    <Text as="p" tone="subdued">
-                      Create a tracking link or QR campaign and send visitors to
-                      your Shopify product page.
-                    </Text>
+              <div ref={createSectionRef} className={styles.anchorSection}>
+                <Card>
+                  <BlockStack gap="400">
+                    <BlockStack gap="100">
+                      <Text variant="headingMd" as="h2">
+                        Create campaign
+                      </Text>
+
+                      <Text as="p" tone="subdued">
+                        Create a tracking link or QR campaign and send visitors
+                        to your Shopify product page.
+                      </Text>
+                    </BlockStack>
+
+                    <WorkflowOverview />
+
+                    {!createAllowed ? (
+                      <Banner tone="warning">
+                        <BlockStack gap="200">
+                          <Text as="p">
+                            {getPlanHelpText(capabilities, campaignCount)}
+                          </Text>
+
+                          {upgradeUrl || proUrl || basicUrl || expertUrl ? (
+                            <Button
+                              variant="primary"
+                              onClick={() => {
+                                window.open(
+                                  getNextPlanUrl(capabilities, {
+                                    upgradeUrl,
+                                    basicUrl,
+                                    proUrl,
+                                    expertUrl,
+                                  }),
+                                  "_top",
+                                );
+                              }}
+                            >
+                              {getUpgradeButtonLabel(capabilities)}
+                            </Button>
+                          ) : null}
+                        </BlockStack>
+                      </Banner>
+                    ) : null}
+
+                    <div className={styles.formGrid}>
+                      <div
+                        className={`${styles.fieldCell} ${styles.nameField}`}
+                      >
+                        <TextField
+                          label={
+                            <InfoLabel
+                              label="Campaign name"
+                              infoKey="campaignName"
+                            />
+                          }
+                          value={name}
+                          onChange={(value) => {
+                            setName(value);
+                            setFormErrors((current) => ({
+                              ...current,
+                              name: "",
+                            }));
+                          }}
+                          autoComplete="off"
+                          placeholder="e.g. TikTok creator, flyer drop, packaging insert"
+                          error={formErrors.name || undefined}
+                          disabled={!createAllowed}
+                        />
+                      </div>
+
+                      <div
+                        className={`${styles.fieldCell} ${styles.typeField}`}
+                      >
+                        <Select
+                          label={
+                            <InfoLabel
+                              label="Campaign type"
+                              infoKey="campaignType"
+                            />
+                          }
+                          options={sourceOptions}
+                          value={sourceType}
+                          onChange={setSourceType}
+                          disabled={!createAllowed}
+                        />
+                      </div>
+
+                      <div
+                        className={`${styles.fieldCell} ${styles.productField}`}
+                      >
+                        <BlockStack gap="150">
+                          <InfoLabel
+                            label="Shopify product"
+                            infoKey="productSelection"
+                          />
+                          <ProductPickerField
+                            selectedProduct={selectedProduct}
+                            onSelect={(product) => {
+                              setSelectedProduct(product);
+                              setFormErrors((current) => ({
+                                ...current,
+                                product: "",
+                              }));
+                            }}
+                            error={formErrors.product || ""}
+                            disabled={!createAllowed}
+                          />
+                        </BlockStack>
+                      </div>
+
+                      <div
+                        className={`${styles.fieldCell} ${styles.costField}`}
+                      >
+                        <TextField
+                          label={
+                            <InfoLabel
+                              label={`Campaign cost (${currency})`}
+                              infoKey="campaignCost"
+                            />
+                          }
+                          value={cost}
+                          onChange={(value) => {
+                            setCost(value);
+                            setFormErrors((current) => ({
+                              ...current,
+                              cost: "",
+                            }));
+                          }}
+                          autoComplete="off"
+                          placeholder="e.g. 250"
+                          helpText={
+                            hasBasicAnalytics
+                              ? "Optional. Used for campaign result, ROI and ROAS."
+                              : "Available from Basic. Free campaigns still track clicks, orders and net revenue."
+                          }
+                          error={formErrors.cost || undefined}
+                          disabled={!createAllowed || !hasBasicAnalytics}
+                        />
+                      </div>
+
+                      <div
+                        className={`${styles.fieldCell} ${styles.notesField}`}
+                      >
+                        <TextField
+                          label={<InfoLabel label="Notes" infoKey="notes" />}
+                          value={notes}
+                          onChange={setNotes}
+                          autoComplete="off"
+                          placeholder="e.g. 300 packaging inserts or creator deal"
+                          disabled={!createAllowed}
+                        />
+                      </div>
+
+                      <div className={styles.createAction}>
+                        <Button
+                          variant="primary"
+                          onClick={createCampaign}
+                          loading={loading}
+                          disabled={
+                            !name.trim() || !selectedProduct || !createAllowed
+                          }
+                        >
+                          {getCreateButtonLabel(capabilities, campaignCount)}
+                        </Button>
+                      </div>
+                    </div>
                   </BlockStack>
+                </Card>
+              </div>
 
-                  {!createAllowed ? (
-                    <Banner tone="warning">
-                      <BlockStack gap="200">
-                        <Text as="p">{getPlanHelpText(capabilities, campaignCount)}</Text>
+              <div ref={campaignsSectionRef} className={styles.anchorSection}>
+                <Card>
+                  <BlockStack gap="400">
+                    <InlineStack align="space-between" gap="300" wrap>
+                      <BlockStack gap="100">
+                        <Text variant="headingMd" as="h2">
+                          Products & channels
+                        </Text>
 
-                        {upgradeUrl || proUrl || basicUrl ? (
+                        <Text as="p" tone="subdued">
+                          Every product brings its TikTok, Instagram,
+                          influencer, e-mail, flyer, packaging and event
+                          campaigns into one measurable view.
+                        </Text>
+                      </BlockStack>
+
+                      <InlineStack gap="200" wrap>
+                        {canExportCampaigns ? (
                           <Button
-                            variant="primary"
                             onClick={() => {
                               window.open(
-                                proUrl || upgradeUrl || basicUrl,
+                                `/api/campaigns/export${embeddedQuery}`,
                                 "_top",
                               );
                             }}
                           >
-                            {getUpgradeButtonLabel(capabilities)}
+                            Export CSV
                           </Button>
                         ) : null}
+
+                        <Badge tone={getPlanBadgeTone(capabilities)}>
+                          {getPlanHeadline(capabilities, campaignCount)}
+                        </Badge>
+                      </InlineStack>
+                    </InlineStack>
+
+                    {campaigns.length ? (
+                      <BlockStack gap="350">
+                        <div className={styles.filterGrid}>
+                          <div className={styles.searchField}>
+                            <TextField
+                              label="Search products and campaigns"
+                              value={productSearch}
+                              onChange={setProductSearch}
+                              autoComplete="off"
+                              placeholder="Product, campaign or note"
+                              clearButton
+                              onClearButtonClick={() => setProductSearch("")}
+                            />
+                          </div>
+
+                          <div className={styles.filterField}>
+                            <Select
+                              label="Channel"
+                              options={sourceFilterOptions}
+                              value={sourceFilter}
+                              onChange={setSourceFilter}
+                            />
+                          </div>
+
+                          <div className={styles.filterField}>
+                            <Select
+                              label="Status"
+                              options={statusFilterOptions}
+                              value={statusFilter}
+                              onChange={setStatusFilter}
+                            />
+                          </div>
+                        </div>
+
+                        <ProductCampaignGroups
+                          groups={productGroups}
+                          sourceLabelByValue={sourceLabelByValue}
+                          currency={currency}
+                          hasBasicAnalytics={hasBasicAnalytics}
+                          hasProFunnel={Boolean(
+                            capabilities.canUseAddToCartTracking,
+                          )}
+                          embeddedQuery={embeddedQuery}
+                          onCopyLink={copyCampaignTrackingLink}
+                          onOpenQr={openCampaignQr}
+                          onDelete={deleteCampaign}
+                          onAssignProduct={assignCampaignProduct}
+                        />
                       </BlockStack>
-                    </Banner>
-                  ) : null}
-
-                  <InlineStack gap="300" wrap align="start">
-                    <div style={{ minWidth: 260, flex: 1 }}>
-                      <TextField
-                        label="Campaign name"
-                        value={name}
-                        onChange={setName}
-                        autoComplete="off"
-                        placeholder="e.g. TikTok creator, flyer drop, packaging insert"
-                        disabled={!createAllowed}
+                    ) : (
+                      <EmptyCampaignState
+                        onCreate={scrollToCreate}
+                        onViewDemo={() => setDemoOpen(true)}
                       />
-                    </div>
-
-                    <div style={{ minWidth: 210 }}>
-                      <Select
-                        label="Campaign type"
-                        options={sourceOptions}
-                        value={sourceType}
-                        onChange={setSourceType}
-                        disabled={!createAllowed}
-                      />
-                    </div>
-
-                    <div style={{ minWidth: 340, flex: 1 }}>
-                      <TextField
-                        label="Destination URL"
-                        value={targetUrl}
-                        onChange={setTargetUrl}
-                        autoComplete="off"
-                        placeholder="https://your-shop.com/products/..."
-                        helpText="Where visitors go after clicking this tracking link."
-                        disabled={!createAllowed}
-                      />
-                    </div>
-
-                    <div style={{ minWidth: 180 }}>
-                      <TextField
-                        label="Campaign cost (€)"
-                        value={cost}
-                        onChange={setCost}
-                        autoComplete="off"
-                        placeholder="e.g. 250"
-                        helpText="Optional. Used for profit and ROI."
-                        disabled={!createAllowed}
-                      />
-                    </div>
-
-                    <div style={{ minWidth: 280, flex: 1 }}>
-                      <TextField
-                        label="Notes"
-                        value={notes}
-                        onChange={setNotes}
-                        autoComplete="off"
-                        placeholder="e.g. 300 packaging inserts or creator deal"
-                        disabled={!createAllowed}
-                      />
-                    </div>
-
-                    <div style={{ alignSelf: "end" }}>
-                      <Button
-                        variant="primary"
-                        onClick={createCampaign}
-                        loading={loading}
-                        disabled={!name.trim() || !createAllowed}
-                      >
-                        {getCreateButtonLabel(capabilities, campaignCount)}
-                      </Button>
-                    </div>
-                  </InlineStack>
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="400">
-                  <InlineStack align="space-between" gap="300" wrap>
-                    <BlockStack gap="100">
-                      <Text variant="headingMd" as="h2">
-                        Campaigns
-                      </Text>
-
-                      <Text as="p" tone="subdued">
-                        Start with {FREE_CAMPAIGN_LIMIT} free campaigns. Basic
-                        includes up to {BASIC_CAMPAIGN_LIMIT} campaigns. Pro
-                        Analytics unlocks unlimited campaigns and Add-to-Cart
-                        tracking.
-                      </Text>
-                    </BlockStack>
-
-                    <Badge tone={getPlanBadgeTone(capabilities)}>
-                      {getPlanHeadline(capabilities, campaignCount)}
-                    </Badge>
-                  </InlineStack>
-
-                  {campaigns.length ? (
-                    <DataTable
-                      columnContentTypes={[
-                        "text",
-                        "text",
-                        "numeric",
-                        "numeric",
-                        "text",
-                        "text",
-                        "text",
-                        "text",
-                      ]}
-                      headings={[
-                        "Campaign",
-                        "Type",
-                        "Clicks",
-                        "Orders",
-                        "Revenue",
-                        "Profit",
-                        "ROI",
-                        "Actions",
-                      ]}
-                      rows={rows}
-                    />
-                  ) : (
-                    <Banner tone="info">
-                      No campaigns yet. Create your first campaign to generate a
-                      tracking link and QR code.
-                    </Banner>
-                  )}
-                </BlockStack>
-              </Card>
+                    )}
+                  </BlockStack>
+                </Card>
+              </div>
 
               <Card>
                 <BlockStack gap="200">
@@ -1139,6 +1689,8 @@ export default function AppIndex() {
                   <Text as="p" tone="subdued">
                     Orders are attributed when a customer completes checkout
                     after visiting your store through a WhatSells tracking link.
+                    Refunds reduce net revenue automatically, and cancelled
+                    orders are removed from active order and conversion counts.
                     Open campaign details to view attributed orders and recent
                     tracking events.
                   </Text>
@@ -1148,22 +1700,33 @@ export default function AppIndex() {
               <Card>
                 <BlockStack gap="200">
                   <InlineStack gap="200" wrap>
-                    <Badge tone={isProPlan(capabilities) ? "success" : "attention"}>
+                    <Badge
+                      tone={isProPlan(capabilities) ? "success" : "attention"}
+                    >
                       Add-to-Cart tracking
                     </Badge>
 
                     <Text as="p" fontWeight="semibold">
                       {isProPlan(capabilities)
-                        ? "Available in your Pro plan"
+                        ? `Available in your ${getPlanName(capabilities)} plan`
                         : "Available with Pro Analytics"}
                     </Text>
                   </InlineStack>
 
                   <Text as="p" tone="subdued">
-                    Add-to-Cart tracking will show which campaigns create cart
-                    intent before an order happens. This is the next Pro layer:
-                    click → add-to-cart → order.
+                    Pro and Expert record cart intent before an order happens
+                    and separate traffic from buying intent: click → add-to-cart
+                    → order. Free and Basic cart events are not stored.
                   </Text>
+
+                  {!isProPlan(capabilities) && (proUrl || upgradeUrl) ? (
+                    <Button
+                      variant="primary"
+                      onClick={() => window.open(proUrl || upgradeUrl, "_top")}
+                    >
+                      Upgrade to Pro
+                    </Button>
+                  ) : null}
                 </BlockStack>
               </Card>
             </BlockStack>
@@ -1181,6 +1744,24 @@ export default function AppIndex() {
         value={qrValue}
         title={qrTitle}
       />
-    </Frame>
+
+      <OnboardingModal
+        open={onboardingOpen}
+        hasCampaigns={campaignCount > 0}
+        onClose={closeOnboarding}
+        onStart={campaignCount > 0 ? scrollToCampaigns : scrollToCreate}
+        onViewDemo={() => {
+          markOnboardingSeen();
+          setOnboardingOpen(false);
+          setDemoOpen(true);
+        }}
+      />
+
+      <CampaignDemoModal
+        open={demoOpen}
+        onClose={() => setDemoOpen(false)}
+        onStart={scrollToCreate}
+      />
+    </>
   );
 }

@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  DEFAULT_CURRENCY,
+  formatCompactMoneyFromCents,
+  formatMoneyFromCents,
+} from "../money";
+
 const CHART_HEIGHT = 320;
 const WRAPPER_HEIGHT = 340;
 const MIN_CHART_WIDTH = 320;
-
-function formatMoneyFromCents(cents) {
-  const value = Number(cents || 0) / 100;
-
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
-  }).format(value);
-}
 
 function formatDateLabel(value) {
   if (!value) return "—";
@@ -51,11 +48,11 @@ function formatTooltipLabel(value, bucket) {
   }
 }
 
-function formatValue(value, metric) {
+function formatValue(value, metric, currency) {
   const num = Number(value || 0);
 
   if (metric === "revenueCents" || metric === "profitCents") {
-    return formatMoneyFromCents(num);
+    return formatMoneyFromCents(num, currency);
   }
 
   if (metric === "conversionRate") {
@@ -69,11 +66,11 @@ function formatValue(value, metric) {
   return String(value ?? 0);
 }
 
-function formatYAxisValue(value, metric) {
+function formatYAxisValue(value, metric, currency) {
   const num = Number(value || 0);
 
   if (metric === "revenueCents" || metric === "profitCents") {
-    return `${Math.round(num / 100)}€`;
+    return formatCompactMoneyFromCents(num, currency);
   }
 
   if (metric === "conversionRate") {
@@ -97,7 +94,7 @@ function getChartColor(metric) {
   return "#22c55e";
 }
 
-function CustomTooltip({ active, payload, label, metric, bucket }) {
+function CustomTooltip({ active, payload, label, metric, bucket, currency }) {
   if (!active || !payload?.length) return null;
 
   const value = payload[0]?.value ?? 0;
@@ -129,7 +126,7 @@ function CustomTooltip({ active, payload, label, metric, bucket }) {
           color: "#111111",
         }}
       >
-        {formatValue(value, metric)}
+        {formatValue(value, metric, currency)}
       </div>
     </div>
   );
@@ -139,6 +136,7 @@ export default function CampaignPerformanceChart({
   data = [],
   metric = "clicks",
   bucket = "day",
+  currency = DEFAULT_CURRENCY,
 }) {
   const wrapperRef = useRef(null);
 
@@ -264,14 +262,7 @@ export default function CampaignPerformanceChart({
     );
   }
 
-  const {
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-  } = charts;
+  const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } = charts;
 
   return (
     <div
@@ -323,7 +314,7 @@ export default function CampaignPerformanceChart({
           axisLine={false}
           tickLine={false}
           width={64}
-          tickFormatter={(value) => formatYAxisValue(value, metric)}
+          tickFormatter={(value) => formatYAxisValue(value, metric, currency)}
         />
 
         <Tooltip
@@ -331,6 +322,7 @@ export default function CampaignPerformanceChart({
             <CustomTooltip
               metric={metric}
               bucket={bucket}
+              currency={currency}
             />
           }
         />

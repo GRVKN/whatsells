@@ -1,7 +1,10 @@
 // app/routes/api.track.jsx
 
 import db from "../db.server";
-import crypto from "node:crypto";
+import { getCachedShopPlan, getShopPlan } from "../billing.server";
+import { getPlanCapabilities } from "../plans";
+import { hashIp } from "../privacy.server";
+import { unauthenticated } from "../shopify.server";
 
 const ALLOWED_EVENT_TYPES = new Set(["add_to_cart"]);
 const CAMPAIGN_PARAM = "ws_campaign";
@@ -38,12 +41,6 @@ function getClientIp(request) {
   if (realIp) return realIp.trim();
 
   return null;
-}
-
-function hashIp(ip) {
-  if (!ip) return null;
-
-  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32);
 }
 
 function looksLikeBot(userAgent = "") {
@@ -187,6 +184,64 @@ export async function action({ request }) {
     );
   }
 
+  let campaignPlan = await getCachedShopPlan(campaign.shop, {
+    maxAgeHours: 6,
+  });
+
+  if (!campaignPlan) {
+    try {
+      const { admin } = await unauthenticated.admin(campaign.shop);
+      campaignPlan = await getShopPlan({
+        shop: campaign.shop,
+        admin,
+      });
+    } catch (error) {
+      console.error("Could not refresh plan for public tracking", {
+        error,
+        shop: campaign.shop,
+      });
+    }
+  }
+
+  const capabilities = getPlanCapabilities(campaignPlan);
+
+  if (!capabilities.canUseAddToCartTracking) {
+    return json({
+      ok: true,
+      skipped: true,
+      reason: "plan_not_entitled",
+    });
+  }
+
+  const ipHash = hashIp(ip);
+  const duplicateWindowStart = new Date(Date.now() - 3_000);
+
+  const recentlyTracked = ipHash
+    ? await db.event.findFirst({
+        where: {
+          campaignId: campaign.id,
+          type: "add_to_cart",
+          ipHash,
+          userAgent: userAgent || null,
+          referer,
+          createdAt: {
+            gte: duplicateWindowStart,
+          },
+        },
+        select: {
+          id: true,
+        },
+      })
+    : null;
+
+  if (recentlyTracked) {
+    return json({
+      ok: true,
+      skipped: true,
+      reason: "duplicate",
+    });
+  }
+
   try {
     await db.$transaction([
       db.event.create({
@@ -196,7 +251,7 @@ export async function action({ request }) {
           userAgent: userAgent || null,
           referer,
           lang,
-          ipHash: hashIp(ip),
+          ipHash,
         },
       }),
 
