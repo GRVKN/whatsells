@@ -21,6 +21,21 @@ const de = Object.freeze({
     "Die Spracheinstellung konnte nicht gespeichert werden.",
   "Current Shopify language: {language}":
     "Aktuelle Shopify-Sprache: {language}",
+  "Track campaign links and QR codes, connect them to Shopify orders and see what actually sells.":
+    "Verfolge Kampagnen-Links und QR-Codes, ordne sie Shopify-Bestellungen zu und erkenne, was sich wirklich verkauft.",
+  "Shop domain": "Shop-Domain",
+  "e.g. my-shop-domain.myshopify.com": "z. B. mein-shop.myshopify.com",
+  "Log in": "Anmelden",
+  "Start with 3 campaigns, tracking links, QR codes and core order attribution.":
+    "Starte mit 3 Kampagnen, Tracking-Links, QR-Codes und grundlegender Bestellzuordnung.",
+  "Analyze up to 20 campaigns with ROI, ROAS, time ranges, rankings and CSV export.":
+    "Analysiere bis zu 20 Kampagnen mit ROI, ROAS, Zeiträumen, Ranglisten und CSV-Export.",
+  "Unlock unlimited campaigns, Add-to-Cart tracking and the full conversion funnel.":
+    "Schalte unbegrenzte Kampagnen, Warenkorb-Tracking und den vollständigen Conversion-Funnel frei.",
+  "Please enter your shop domain to log in":
+    "Gib deine Shop-Domain ein, um dich anzumelden.",
+  "Please enter a valid shop domain to log in":
+    "Gib eine gültige Shop-Domain ein, um dich anzumelden.",
   "Shopify product": "Shopify-Produkt",
   "Untitled product": "Unbenanntes Produkt",
   "The Shopify product selector could not be opened. Refresh the app and try again.":

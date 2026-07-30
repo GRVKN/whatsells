@@ -67,6 +67,14 @@ test("automatic preference clears the manual cookie", () => {
 
 test("translates strings with interpolation and falls back safely", () => {
   assert.equal(translate("de", "Settings"), "Einstellungen");
+  assert.equal(translate("de", "Log in"), "Anmelden");
+  assert.equal(
+    translate(
+      "de",
+      "Track campaign links and QR codes, connect them to Shopify orders and see what actually sells.",
+    ),
+    "Verfolge Kampagnen-Links und QR-Codes, ordne sie Shopify-Bestellungen zu und erkenne, was sich wirklich verkauft.",
+  );
   assert.equal(
     translate("de", "Current Shopify language: {language}", {
       language: "Deutsch",
