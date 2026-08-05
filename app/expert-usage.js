@@ -46,7 +46,9 @@ const MODEL_RATES = Object.freeze({
 });
 
 const WEB_SEARCH_COST_MICROS = 10_000;
-const MEDIUM_PORTRAIT_IMAGE_COST_MICROS = 41_000;
+// Reserve against the most expensive medium format used by the flyer studio.
+// The square GPT Image 2 output currently costs more than the portrait sizes.
+const MEDIUM_FLYER_IMAGE_COST_MICROS = 53_000;
 
 function nonnegativeInteger(value) {
   const number = Number(value);
@@ -74,7 +76,7 @@ export function calculateExpertCostMicros({
     nonnegativeInteger(outputTokens) * rates.output;
   const toolCost = nonnegativeInteger(webSearchCalls) * WEB_SEARCH_COST_MICROS;
   const imageCost =
-    nonnegativeInteger(imageCount) * MEDIUM_PORTRAIT_IMAGE_COST_MICROS;
+    nonnegativeInteger(imageCount) * MEDIUM_FLYER_IMAGE_COST_MICROS;
 
   return Math.max(Math.ceil(tokenCost + toolCost + imageCost), 0);
 }

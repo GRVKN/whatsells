@@ -54,7 +54,9 @@
 
 .formGrid,
 .usageGrid,
-.draftGrid {
+.draftGrid,
+.flyerFormGrid,
+.flyerPreviewGrid {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -142,12 +144,45 @@
   margin-top: 0.35rem;
 }
 
+.flyerEditor {
+  padding: 0.9rem;
+  border: 1px solid #c9d9d2;
+  border-radius: 0.75rem;
+  background: #f6fbf9;
+}
+
+.flyerFormGrid {
+  margin-bottom: 0.75rem;
+}
+
+.flyerWideField {
+  grid-column: 1 / -1;
+}
+
+.flyerPreview {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.flyerPreview img {
+  display: block;
+  width: 100%;
+  max-height: 36rem;
+  border: 1px solid #dfe3e8;
+  border-radius: 0.75rem;
+  background: #fff;
+  object-fit: contain;
+}
+
 @media (max-width: 52rem) {
   .scoreColumns,
   .recommendationGrid,
   .formGrid,
   .usageGrid,
-  .draftGrid {
+  .draftGrid,
+  .flyerFormGrid,
+  .flyerPreviewGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

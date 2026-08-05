@@ -43,16 +43,24 @@ export async function loader({ request, params }) {
   }
 
   try {
+    const searchParams = new URL(request.url).searchParams;
+    const wantsPdf =
+      searchParams.get("format") === "pdf" &&
+      asset.mimeType === "image/png" &&
+      Boolean(asset.sourceStoragePath);
     const stored = await downloadExpertAsset({
-      path: asset.storagePath,
+      path: wantsPdf ? asset.sourceStoragePath : asset.storagePath,
     });
-    const download = new URL(request.url).searchParams.get("download") === "1";
+    const download = searchParams.get("download") === "1";
+    const fileName = wantsPdf
+      ? asset.fileName.replace(/\.png$/i, ".pdf")
+      : asset.fileName;
 
     return new Response(stored.body, {
       status: 200,
       headers: {
-        "Content-Type": asset.mimeType,
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safeFileName(asset.fileName)}"`,
+        "Content-Type": wantsPdf ? "application/pdf" : asset.mimeType,
+        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safeFileName(fileName)}"`,
         "Cache-Control": "private, no-store",
         "Content-Security-Policy":
           "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",

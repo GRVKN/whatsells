@@ -19,13 +19,13 @@ test("estimated cost uses the selected model, cached input and tools", () => {
   assert.equal(cost, 13_550);
 });
 
-test("image generation receives a bounded medium portrait estimate", () => {
+test("image generation reserves the highest medium flyer format estimate", () => {
   const cost = calculateExpertCostMicros({
     model: "gpt-image-2",
     imageCount: 1,
   });
 
-  assert.equal(cost, 41_000);
+  assert.equal(cost, 53_000);
 });
 
 test("monthly progress reports category and cost remainders", () => {

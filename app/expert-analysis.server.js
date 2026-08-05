@@ -200,9 +200,14 @@ export async function getOrCreateExpertSnapshot({
       ? UNCHANGED_REFRESH_COOLDOWN_MS
       : CHANGED_REFRESH_COOLDOWN_MS;
 
-  if (existing && snapshotAgeMs < refreshCooldownMs) {
+  if (existing && !force && snapshotAgeMs < refreshCooldownMs) {
     return existing;
   }
+
+  const goal = await db.expertGoal.findUnique({
+    where: { shop: normalizedShop },
+    select: { language: true },
+  });
 
   const deterministicAnalysis = buildExpertAnalysis({
     campaigns,
@@ -211,6 +216,7 @@ export async function getOrCreateExpertSnapshot({
   });
   const enhanced = await enhanceExpertAnalysis(deterministicAnalysis, {
     shop: normalizedShop,
+    language: goal?.language || "en",
   });
   const status = deterministicAnalysis.status;
 

@@ -22,6 +22,7 @@ import {
 
 import { getShopPlan } from "../billing.server";
 import { generateExpertFlyer } from "../expert-assets.server";
+import { EXPERT_FLYER_FORMATS } from "../expert-flyer";
 import { getOrCreateExpertSnapshot } from "../expert-analysis.server";
 import {
   activateExpertCampaignDraft,
@@ -34,6 +35,7 @@ import {
   saveExpertGoals,
 } from "../expert-copilot.server";
 import { loadExpertWorkspace } from "../expert-context.server";
+import { localizeExpertRecommendation } from "../expert-localization";
 import { isExpertStorageConfigured } from "../expert-storage.server";
 import { ExpertUsageLimitError } from "../expert-usage.server";
 import { useI18n } from "../i18n-context";
@@ -108,7 +110,9 @@ function Score({ value, confidence }) {
         <Text as="p" fontWeight="semibold">
           {score}/100
         </Text>
-        <Badge>{t("{confidence} confidence", { confidence })}</Badge>
+        <Badge>
+          {t("{confidence} confidence", { confidence: t(confidence) })}
+        </Badge>
       </InlineStack>
       <ProgressBar
         progress={score}
@@ -121,6 +125,7 @@ function Score({ value, confidence }) {
 
 function RecommendationCard({ item, currency, featured = false }) {
   const { t, formatMoney } = useI18n();
+  const localizedItem = localizeExpertRecommendation(item, t);
   const metrics = item?.metrics || {};
   const evidence = [];
 
@@ -158,7 +163,7 @@ function RecommendationCard({ item, currency, featured = false }) {
             </Badge>
             <Badge>
               {t("{confidence} confidence", {
-                confidence: item.confidence,
+                confidence: t(item.confidence),
               })}
             </Badge>
           </InlineStack>
@@ -169,14 +174,14 @@ function RecommendationCard({ item, currency, featured = false }) {
           </Text>
         </InlineStack>
         <Text as={featured ? "h2" : "h3"} variant="headingMd">
-          {item.title}
+          {localizedItem.title}
         </Text>
-        <Text as="p">{item.summary}</Text>
+        <Text as="p">{localizedItem.summary}</Text>
         <Text as="p" tone="subdued">
-          <strong>{t("Why:")}</strong> {item.rationale}
+          <strong>{t("Why:")}</strong> {localizedItem.rationale}
         </Text>
         <Text as="p">
-          <strong>{t("Next:")}</strong> {item.nextStep}
+          <strong>{t("Next:")}</strong> {localizedItem.nextStep}
         </Text>
         {evidence.length ? (
           <InlineStack gap="150" wrap>
@@ -332,6 +337,18 @@ export async function loader({ request }) {
       ...workspace,
       drafts: workspace.drafts.map((draft) => ({
         ...draft,
+        assets: draft.assets.map((asset) => ({
+          id: asset.id,
+          type: asset.type,
+          fileName: asset.fileName,
+          mimeType: asset.mimeType,
+          width: asset.width,
+          height: asset.height,
+          createdAt: asset.createdAt,
+          expiresAt: asset.expiresAt,
+          hasPdf:
+            asset.mimeType === "image/png" && Boolean(asset.sourceStoragePath),
+        })),
         trackingLink: draft.campaign?.publicToken
           ? buildExpertTrackingLink(draft.campaign.publicToken)
           : null,
@@ -464,6 +481,13 @@ export async function action({ request }) {
       await generateExpertFlyer({
         shop: session.shop,
         draftId: formData.get("draftId"),
+        values: {
+          format: formData.get("format"),
+          headline: formData.get("headline"),
+          subline: formData.get("subline"),
+          cta: formData.get("cta"),
+          visualDirection: formData.get("visualDirection"),
+        },
       });
       return Response.json({
         ok: true,
@@ -875,6 +899,10 @@ function WeeklyCard({ latest, navigation, currency, enabled }) {
 function DraftCard({ draft, currency, navigation, storageEnabled, aiEnabled }) {
   const packageData = draft.package || {};
   const { t, formatMoney } = useI18n();
+  const flyerConcept = packageData.flyerConcept || {};
+  const flyerAssets = (draft.assets || []).filter(
+    (asset) => asset.type === "flyer",
+  );
 
   return (
     <div className={styles.draftCard}>
@@ -945,19 +973,7 @@ function DraftCard({ draft, currency, navigation, storageEnabled, aiEnabled }) {
                 {t("Confirm and create tracking campaign")}
               </Button>
             </Form>
-          ) : (
-            <Form method="post">
-              <input type="hidden" name="intent" value="generate_flyer" />
-              <input type="hidden" name="draftId" value={draft.id} />
-              <Button
-                submit
-                disabled={!storageEnabled || !aiEnabled}
-                loading={isSubmitting(navigation, "generate_flyer")}
-              >
-                {t("Generate AI flyer + real QR")}
-              </Button>
-            </Form>
-          )}
+          ) : null}
           {draft.status === "draft" ? (
             <Form method="post">
               <input type="hidden" name="intent" value="reject_draft" />
@@ -972,17 +988,123 @@ function DraftCard({ draft, currency, navigation, storageEnabled, aiEnabled }) {
             </Form>
           ) : null}
         </InlineStack>
-        {draft.assets?.length ? (
-          <InlineStack gap="150" wrap>
-            {draft.assets.map((asset) => (
-              <Button
-                key={asset.id}
-                url={`/api/expert/assets/${asset.id}?download=1`}
-              >
-                {t("Download {fileName}", { fileName: asset.fileName })}
-              </Button>
-            ))}
-          </InlineStack>
+        {draft.campaign ? (
+          <div className={styles.flyerEditor}>
+            <BlockStack gap="250">
+              <BlockStack gap="050">
+                <Text as="h4" fontWeight="semibold">
+                  {t("Create finished flyer")}
+                </Text>
+                <Text as="p" tone="subdued">
+                  {t(
+                    "Edit the exact wording and format before GPT Image creates the visual. WhatSells adds the original product photo and the real tracking QR code afterward.",
+                  )}
+                </Text>
+              </BlockStack>
+              <Form method="post">
+                <input type="hidden" name="intent" value="generate_flyer" />
+                <input type="hidden" name="draftId" value={draft.id} />
+                <div className={styles.flyerFormGrid}>
+                  <label className={styles.field}>
+                    <span>{t("Flyer format")}</span>
+                    <select name="format" defaultValue="a5">
+                      {Object.values(EXPERT_FLYER_FORMATS).map((format) => (
+                        <option value={format.key} key={format.key}>
+                          {t(format.label)} · {format.width} × {format.height}{" "}
+                          px
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.field}>
+                    <span>{t("Headline")}</span>
+                    <input
+                      name="headline"
+                      required
+                      maxLength={120}
+                      defaultValue={
+                        flyerConcept.headline ||
+                        packageData.headline ||
+                        draft.product?.title ||
+                        ""
+                      }
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span>{t("Subheadline")}</span>
+                    <textarea
+                      name="subline"
+                      maxLength={280}
+                      defaultValue={
+                        flyerConcept.subline || packageData.shortText || ""
+                      }
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span>{t("Call to action")}</span>
+                    <input
+                      name="cta"
+                      required
+                      maxLength={60}
+                      defaultValue={flyerConcept.cta || packageData.cta || ""}
+                    />
+                  </label>
+                  <label className={`${styles.field} ${styles.flyerWideField}`}>
+                    <span>{t("Visual style")}</span>
+                    <textarea
+                      name="visualDirection"
+                      maxLength={1200}
+                      defaultValue={
+                        flyerConcept.visualDirection ||
+                        packageData.creativeBrief ||
+                        ""
+                      }
+                      placeholder={t(
+                        "Example: premium, warm natural light, clean background, emerald accents",
+                      )}
+                    />
+                  </label>
+                </div>
+                <Button
+                  submit
+                  variant="primary"
+                  disabled={!storageEnabled || !aiEnabled}
+                  loading={isSubmitting(navigation, "generate_flyer")}
+                >
+                  {flyerAssets.length
+                    ? t("Create new flyer version")
+                    : t("Generate AI flyer + real QR")}
+                </Button>
+              </Form>
+              {flyerAssets.length ? (
+                <div className={styles.flyerPreviewGrid}>
+                  {flyerAssets.map((asset) => (
+                    <div className={styles.flyerPreview} key={asset.id}>
+                      <img
+                        src={`/api/expert/assets/${asset.id}`}
+                        alt={t("Generated flyer preview")}
+                        loading="lazy"
+                      />
+                      <InlineStack gap="150" wrap>
+                        <Button
+                          url={`/api/expert/assets/${asset.id}?download=1`}
+                        >
+                          {t("Download PNG")}
+                        </Button>
+                        {asset.hasPdf ? (
+                          <Button
+                            url={`/api/expert/assets/${asset.id}?format=pdf&download=1`}
+                          >
+                            {t("Download PDF")}
+                          </Button>
+                        ) : null}
+                      </InlineStack>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </BlockStack>
+          </div>
         ) : null}
       </BlockStack>
     </div>
