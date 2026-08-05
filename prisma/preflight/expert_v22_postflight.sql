@@ -54,7 +54,7 @@ SELECT
     AS size_limit_correct,
   COALESCE(
     BOOL_AND(
-      allowed_mime_types @> ARRAY['image/webp', 'image/svg+xml']::TEXT[]
+      allowed_mime_types @> ARRAY['image/png', 'application/pdf']::TEXT[]
     ),
     false
   ) AS mime_types_correct
