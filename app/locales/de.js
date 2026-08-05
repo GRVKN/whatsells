@@ -140,6 +140,9 @@ const de = Object.freeze({
   plan: "Tarif",
   "{days}-day free trial": "{days} Tage kostenlos testen",
   "Current plan": "Aktueller Tarif",
+  "Active plan": "Aktiver Tarif",
+  "View plans": "Tarife ansehen",
+  "Hide plans": "Tarife ausblenden",
   "Billing changes are confirmed in Shopify before they become active. Downgrading never deletes existing campaign data, but features and new campaign creation follow the active plan limits.":
     "Tarifänderungen werden in Shopify bestätigt, bevor sie aktiv werden. Ein Downgrade löscht keine vorhandenen Kampagnendaten; Funktionen und neue Kampagnen richten sich jedoch nach den Limits des aktiven Tarifs.",
   Free: "Free",
@@ -604,6 +607,113 @@ const de = Object.freeze({
   "Verified rules · AI unavailable": "Geprüfte Regeln · KI nicht verfügbar",
   "Verified rules active": "Geprüfte Regeln aktiv",
   "{confidence} confidence": "{confidence} Sicherheit",
+  High: "Hoch",
+  Medium: "Mittel",
+  Low: "Niedrig",
+  "pause or rework": "pausieren oder überarbeiten",
+  "fix product page": "Produktseite verbessern",
+  "fix checkout": "Checkout verbessern",
+  "scale controlled": "kontrolliert skalieren",
+  "traffic decline": "Traffic-Rückgang",
+  "collect data": "Daten sammeln",
+  "create first campaign": "erste Kampagne erstellen",
+  "assign products": "Produkte zuordnen",
+  "prioritize product": "Produkt priorisieren",
+  "test second channel": "zweiten Kanal testen",
+  "keep measuring": "weiter messen",
+  "Protect budget on “{name}”": "Schütze das Budget bei „{name}“",
+  "Improve the product path for “{name}”":
+    "Verbessere den Produktweg für „{name}“",
+  "Investigate checkout friction for “{name}”":
+    "Prüfe Checkout-Hürden bei „{name}“",
+  "Scale “{name}” carefully": "Skaliere „{name}“ vorsichtig",
+  "Traffic is falling for “{name}”": "Der Traffic für „{name}“ sinkt",
+  "Collect a clearer signal for “{name}”":
+    "Sammle ein klareres Signal für „{name}“",
+  "Prioritize “{name}”": "Priorisiere „{name}“",
+  "Test a second channel for “{name}”":
+    "Teste einen zweiten Kanal für „{name}“",
+  "Create the first measurable campaign":
+    "Erstelle die erste messbare Kampagne",
+  "Assign products to historical campaigns":
+    "Ordne bestehenden Kampagnen Produkte zu",
+  "Keep the current tests measurable": "Halte die aktuellen Tests messbar",
+  "This campaign has enough negative evidence to justify a pause or a controlled rework.":
+    "Diese Kampagne liefert genügend negative Signale, um eine Pause oder eine kontrollierte Überarbeitung zu rechtfertigen.",
+  "Tracked cost is ahead of attributed value. Continuing unchanged risks adding more spend to the same weak path.":
+    "Die erfassten Kosten liegen über dem zugeordneten Wert. Unverändert weiterzumachen birgt das Risiko, noch mehr Geld in denselben schwachen Weg zu stecken.",
+  "Pause external spend or distribution, check the offer and destination page, then relaunch as a small measured test. WhatSells will not change the budget automatically.":
+    "Pausiere externe Ausgaben oder die Verteilung, prüfe Angebot und Zielseite und starte dann einen kleinen messbaren Test neu. WhatSells ändert das Budget niemals automatisch.",
+  "Traffic arrives, but too few visitors show buying intent by adding the product to cart.":
+    "Besucher kommen an, aber zu wenige zeigen Kaufabsicht, indem sie das Produkt in den Warenkorb legen.",
+  "The click-to-cart step is the main visible leak. The ad may attract attention while the product page, offer or audience match fails to continue the sale.":
+    "Der Schritt vom Klick zum Warenkorb ist das größte sichtbare Leck. Die Werbung kann Aufmerksamkeit erzeugen, während Produktseite, Angebot oder Zielgruppe den Verkauf nicht weiterführen.",
+  "Check message-to-page consistency, price clarity, delivery information and the first mobile screen before buying more traffic.":
+    "Prüfe die Übereinstimmung von Werbebotschaft und Seite, Preisklarheit, Lieferinformationen und den ersten mobilen Bildschirm, bevor du weiteren Traffic einkaufst.",
+  "Visitors add the product to cart, but too few complete an attributed order.":
+    "Besucher legen das Produkt in den Warenkorb, aber zu wenige schließen eine zugeordnete Bestellung ab.",
+  "Buying intent exists. The larger loss happens after the cart step, where shipping cost, payment options, trust or checkout friction may matter.":
+    "Kaufabsicht ist vorhanden. Der größere Verlust entsteht nach dem Warenkorb – dort können Versandkosten, Zahlungsarten, Vertrauen oder Checkout-Hürden entscheidend sein.",
+  "Test checkout on mobile, review shipping surprises and payment methods, and compare the next measured period before changing the campaign creative.":
+    "Teste den Checkout mobil, prüfe überraschende Versandkosten und Zahlungsarten und vergleiche den nächsten Messzeitraum, bevor du das Kampagnenmotiv änderst.",
+  "The campaign combines attributed orders, positive campaign result and a useful conversion signal.":
+    "Die Kampagne verbindet zugeordnete Bestellungen, ein positives Kampagnenergebnis und ein brauchbares Conversion-Signal.",
+  "This is stronger evidence than clicks alone. It is a candidate for more reach, but WhatSells cannot see product margin or every external ad-platform cost.":
+    "Das ist ein stärkeres Signal als Klicks allein. Die Kampagne kommt für mehr Reichweite infrage, aber WhatSells kennt weder die Produktmarge noch alle externen Werbekosten.",
+  "Increase distribution or budget only in a small controlled step, keep the same tracking link and compare the next period before scaling again.":
+    "Erhöhe Verteilung oder Budget nur in einem kleinen kontrollierten Schritt, behalte denselben Tracking-Link und vergleiche den nächsten Zeitraum, bevor du erneut skalierst.",
+  "Tracked visits in the last seven days are materially below the preceding seven-day period.":
+    "Die erfassten Besuche der letzten sieben Tage liegen deutlich unter dem vorherigen Sieben-Tage-Zeitraum.",
+  "The campaign may be losing reach, the QR placement may have ended or the creative may be tiring. A traffic decline alone does not prove the product is weak.":
+    "Die Kampagne verliert möglicherweise Reichweite, die QR-Platzierung ist beendet oder das Motiv nutzt sich ab. Sinkender Traffic allein beweist kein schwaches Produkt.",
+  "Check whether distribution changed, refresh the creative or placement if needed, and keep the same product comparison visible.":
+    "Prüfe, ob sich die Verteilung geändert hat, erneuere bei Bedarf Motiv oder Platzierung und halte denselben Produktvergleich sichtbar.",
+  "There is not enough recent tracked traffic for a reliable performance decision.":
+    "Es gibt noch nicht genügend aktuell erfassten Traffic für eine verlässliche Leistungsentscheidung.",
+  "Small samples can make one order or one refund look more important than it is.":
+    "Kleine Stichproben können eine einzelne Bestellung oder Erstattung wichtiger erscheinen lassen, als sie ist.",
+  "Keep the campaign measurable, verify that the tracking link or QR code is actually distributed, and reassess after at least 30 tracked clicks.":
+    "Halte die Kampagne messbar, prüfe die tatsächliche Verteilung von Tracking-Link oder QR-Code und bewerte sie nach mindestens 30 erfassten Klicks erneut.",
+  "Expert needs at least one tracking link or QR campaign before it can compare real performance.":
+    "Expert benötigt mindestens eine Tracking-Link- oder QR-Kampagne, bevor echte Leistung verglichen werden kann.",
+  "Without tracked visits and attributed orders, any product or budget recommendation would be guesswork.":
+    "Ohne erfasste Besuche und zugeordnete Bestellungen wäre jede Produkt- oder Budgetempfehlung reine Spekulation.",
+  "Choose a published Shopify product, create one campaign and distribute its WhatSells link or QR code.":
+    "Wähle ein veröffentlichtes Shopify-Produkt, erstelle eine Kampagne und verteile deren WhatSells-Link oder QR-Code.",
+  "1 campaign cannot contribute to product opportunities yet.":
+    "1 Kampagne kann noch nicht zu den Produktchancen beitragen.",
+  "{count} campaigns cannot contribute to product opportunities yet.":
+    "{count} Kampagnen können noch nicht zu den Produktchancen beitragen.",
+  "Product-level recommendations become stronger when every existing campaign is connected to the product it promoted.":
+    "Empfehlungen auf Produktebene werden besser, wenn jede bestehende Kampagne mit dem beworbenen Produkt verbunden ist.",
+  "Open the unassigned campaign group and choose the matching published Shopify product. Existing metrics stay unchanged.":
+    "Öffne die Gruppe nicht zugeordneter Kampagnen und wähle das passende veröffentlichte Shopify-Produkt. Bestehende Kennzahlen bleiben unverändert.",
+  "This product currently has the strongest combination of measured demand, efficiency and evidence quality.":
+    "Dieses Produkt hat aktuell die stärkste Kombination aus gemessener Nachfrage, Effizienz und Datenqualität.",
+  "The Opportunity Score compares tracked behavior inside WhatSells. It does not include inventory, unit margin or external market demand.":
+    "Der Opportunity Score vergleicht das in WhatSells erfasste Verhalten. Lagerbestand, Stückmarge und externe Marktnachfrage sind nicht enthalten.",
+  "Use this product as the first candidate for the next controlled channel test, then compare the new campaign under the same product.":
+    "Nutze dieses Produkt als ersten Kandidaten für den nächsten kontrollierten Kanaltest und vergleiche die neue Kampagne anschließend unter demselben Produkt.",
+  "The product has a measurable signal, but it is currently dependent on one tracked channel.":
+    "Das Produkt hat ein messbares Signal, ist aktuell aber von einem einzigen erfassten Kanal abhängig.",
+  "A second channel creates a real product-level comparison and reduces the risk of judging the product from one placement or audience.":
+    "Ein zweiter Kanal schafft einen echten Produktvergleich und reduziert das Risiko, das Produkt anhand nur einer Platzierung oder Zielgruppe zu bewerten.",
+  "Create one small campaign for a different channel and keep its link or QR code separate so the comparison stays clean.":
+    "Erstelle eine kleine Kampagne für einen anderen Kanal und halte Link oder QR-Code getrennt, damit der Vergleich sauber bleibt.",
+  "No campaign currently crosses a reliable stop, fix or scale threshold.":
+    "Aktuell überschreitet keine Kampagne eine verlässliche Schwelle zum Stoppen, Verbessern oder Skalieren.",
+  "That is not a failure. It means the available WhatSells evidence does not justify a stronger action today.":
+    "Das ist kein Misserfolg. Die vorhandenen WhatSells-Daten rechtfertigen heute einfach keine stärkere Maßnahme.",
+  "Keep links and QR codes separated by channel, record campaign costs and review the next daily snapshot.":
+    "Halte Links und QR-Codes nach Kanal getrennt, erfasse Kampagnenkosten und prüfe den nächsten täglichen Snapshot.",
+  "Recommendations never change external ad budgets automatically.":
+    "Empfehlungen ändern externe Werbebudgets niemals automatisch.",
+  "Campaign cost is lifetime cost because WhatSells has no cost-history ledger yet.":
+    "Kampagnenkosten sind Gesamtkosten, weil WhatSells noch keinen Kostenverlauf führt.",
+  "Product margin, inventory and external market demand are not included.":
+    "Produktmarge, Lagerbestand und externe Marktnachfrage sind nicht enthalten.",
+  "Low-volume recommendations are marked with low confidence.":
+    "Empfehlungen mit geringer Datenmenge werden mit niedriger Sicherheit gekennzeichnet.",
   "{count} clicks · 30 days": "{count} Klicks · 30 Tage",
   "{count} orders · 30 days": "{count} Bestellungen · 30 Tage",
   "{result} result": "{result} Ergebnis",
@@ -676,6 +786,24 @@ const de = Object.freeze({
   "Confirm and create tracking campaign":
     "Bestätigen und Tracking-Kampagne erstellen",
   "Generate AI flyer + real QR": "KI-Flyer + echten QR-Code erstellen",
+  "Create finished flyer": "Fertigen Flyer erstellen",
+  "Edit the exact wording and format before GPT Image creates the visual. WhatSells adds the original product photo and the real tracking QR code afterward.":
+    "Bearbeite den exakten Wortlaut und das Format, bevor GPT Image das Motiv erstellt. WhatSells setzt anschließend das Original-Produktfoto und den echten Tracking-QR-Code ein.",
+  "Flyer format": "Flyer-Format",
+  "A5 print": "A5-Druck",
+  "A4 print": "A4-Druck",
+  "Instagram post": "Instagram-Beitrag",
+  "Instagram story": "Instagram-Story",
+  Headline: "Überschrift",
+  Subheadline: "Unterzeile",
+  "Call to action": "Handlungsaufforderung",
+  "Visual style": "Bildstil",
+  "Example: premium, warm natural light, clean background, emerald accents":
+    "Beispiel: hochwertig, warmes natürliches Licht, ruhiger Hintergrund, smaragdgrüne Akzente",
+  "Create new flyer version": "Neue Flyer-Version erstellen",
+  "Generated flyer preview": "Vorschau des erstellten Flyers",
+  "Download PNG": "PNG herunterladen",
+  "Download PDF": "PDF herunterladen",
   "Reject draft": "Entwurf ablehnen",
   "Download {fileName}": "{fileName} herunterladen",
   "Campaign studio": "Kampagnenstudio",

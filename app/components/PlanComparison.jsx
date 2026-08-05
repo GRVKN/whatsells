@@ -6,6 +6,7 @@ import {
   InlineStack,
   Text,
 } from "@shopify/polaris";
+import { useState } from "react";
 
 import {
   EXPERT_PRICE_LABEL,
@@ -80,22 +81,56 @@ export default function PlanComparison({
   const currentPlanKey = normalizePlanKey(
     capabilities?.planKey || capabilities?.plan,
   );
+  const [showAllPlans, setShowAllPlans] = useState(
+    currentPlanKey === PLAN_KEYS.FREE,
+  );
   const urls = { upgradeUrl, basicUrl, proUrl, expertUrl };
+  const currentDefinition = PLAN_DEFINITIONS[currentPlanKey];
+
+  if (!showAllPlans) {
+    return (
+      <Card>
+        <InlineStack align="space-between" gap="300" blockAlign="center" wrap>
+          <BlockStack gap="050">
+            <InlineStack gap="150" blockAlign="center" wrap>
+              <Text variant="headingMd" as="h2">
+                {t("Active plan")}: {t(currentDefinition.label)}
+              </Text>
+              <Badge tone="success">{t("Current plan")}</Badge>
+            </InlineStack>
+            <Text as="p" tone="subdued">
+              {t(PRICE_LABELS[currentPlanKey])}
+            </Text>
+          </BlockStack>
+          <Button onClick={() => setShowAllPlans(true)}>
+            {t("View plans")}
+          </Button>
+        </InlineStack>
+      </Card>
+    );
+  }
 
   return (
     <Card>
       <BlockStack gap="400">
-        <BlockStack gap="100">
-          <Text variant="headingMd" as="h2">
-            {t("Choose the level of detail you need")}
-          </Text>
+        <InlineStack align="space-between" gap="300" blockAlign="start" wrap>
+          <BlockStack gap="100">
+            <Text variant="headingMd" as="h2">
+              {t("Choose the level of detail you need")}
+            </Text>
 
-          <Text as="p" tone="subdued">
-            {t(
-              "Every plan tracks real orders. Paid plans add deeper analysis, and Expert adds a protected AI copilot, live market scans, campaign packages and flyer generation.",
-            )}
-          </Text>
-        </BlockStack>
+            <Text as="p" tone="subdued">
+              {t(
+                "Every plan tracks real orders. Paid plans add deeper analysis, and Expert adds a protected AI copilot, live market scans, campaign packages and flyer generation.",
+              )}
+            </Text>
+          </BlockStack>
+          {currentPlanKey !== PLAN_KEYS.FREE ? (
+            <Button onClick={() => setShowAllPlans(false)}>
+              {t("Hide plans")}
+            </Button>
+          ) : null}
+        </InlineStack>
 
         <div className={styles.planGrid}>
           {Object.values(PLAN_DEFINITIONS).map((definition) => {

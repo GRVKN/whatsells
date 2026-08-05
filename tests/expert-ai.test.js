@@ -41,6 +41,7 @@ test("Expert accepts structured AI wording without changing the recommendation k
 
     assert.equal(request.store, false);
     assert.equal(request.text.format.type, "json_schema");
+    assert.match(request.instructions, /language code "de"/);
 
     return {
       ok: true,
@@ -75,6 +76,7 @@ test("Expert accepts structured AI wording without changing the recommendation k
     enabled: true,
     apiKey: "test-key",
     model: "test-model",
+    language: "de",
     fetchImpl,
   });
 
